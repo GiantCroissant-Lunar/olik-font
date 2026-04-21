@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@olik/glyph-schema": resolve(__dirname, "../../packages/glyph-schema/src/index.ts"),
+      "@olik/glyph-viz":    resolve(__dirname, "../../packages/glyph-viz/src/index.ts"),
+      "@olik/flow-nodes":   resolve(__dirname, "../../packages/flow-nodes/src/index.ts"),
+      "@olik/rule-viz":     resolve(__dirname, "../../packages/rule-viz/src/index.ts"),
       "@olik/glyph-loader": resolve(
         __dirname,
         "../../packages/glyph-loader/src/load-url.ts",
