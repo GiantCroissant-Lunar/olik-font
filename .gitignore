@@ -36,3 +36,6 @@ project/py/.venv/
 # Archon runtime state (workflows under .archon/workflows/ ARE committed)
 .archon/state/
 .archon/.log/
+
+# Local preview output from scripts/preview-glyph.py
+preview/

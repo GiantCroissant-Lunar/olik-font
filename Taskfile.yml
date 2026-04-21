@@ -168,6 +168,33 @@ tasks:
     desc: Run every codegen target
     deps: [codegen:cjk-decomp]
 
+  # ─── Preview ───────────────────────────────────────────────────────────
+  preview:glyph:
+    desc: "Render a glyph-record JSON as an SVG (opens in default viewer). Usage: task preview:glyph CHAR=明"
+    vars:
+      CHAR: '{{.CHAR | default "明"}}'
+      REC: "project/schema/examples/glyph-record-{{.CHAR}}.json"
+      OUT: "preview/{{.CHAR}}.svg"
+    cmds:
+      - mkdir -p preview
+      - python3 scripts/preview-glyph.py "{{.REC}}" --out "{{.OUT}}"
+      - open "{{.OUT}}" 2>/dev/null || echo "wrote {{.OUT}}"
+
+  preview:seed:
+    desc: Render SVG previews for all 4 seed characters (明 清 國 森)
+    cmds:
+      - mkdir -p preview
+      - |
+        for ch in 明 清 國 森; do
+          rec="project/schema/examples/glyph-record-$ch.json"
+          if [ -f "$rec" ]; then
+            python3 scripts/preview-glyph.py "$rec" --out "preview/$ch.svg"
+          else
+            echo "missing: $rec (run \`task archon:run WF=plan-03-python-compose-cli\` first)"
+          fi
+        done
+      - open preview/*.svg 2>/dev/null || echo "previews written to preview/*.svg"
+
   # ─── Housekeeping ──────────────────────────────────────────────────────
   clean:
     desc: Remove venv, node_modules, pytest caches, dist dirs
