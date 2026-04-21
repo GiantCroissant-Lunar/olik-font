@@ -109,3 +109,55 @@ def upsert_rule_trace(
                 }
             },
         )
+
+
+def upsert_glyph_stub(
+    db: Surreal,
+    char: str,
+    status: str,
+    *,
+    missing_op: str | None = None,
+    extraction_error: str | None = None,
+    extraction_run: str | None = None,
+) -> None:
+    """Insert-or-update a bucket row with no stroke data — used for
+    `unsupported_op` and `failed_extraction` outcomes so every bucket
+    in the batch produces a DB row.
+    """
+    body: dict[str, Any] = {"char": char, "status": status}
+    if missing_op is not None:
+        body["missing_op"] = missing_op
+    if extraction_error is not None:
+        body["extraction_error"] = extraction_error
+    if extraction_run is not None:
+        body["extraction_run"] = extraction_run
+    db.query(
+        "UPDATE type::thing('glyph', $char) MERGE $data;",
+        {"char": char, "data": body},
+    )
+
+
+def upsert_variant_of_edge(
+    db: Surreal,
+    variant_id: str,
+    canonical_id: str,
+    reason: str = "iou_fallback",
+) -> None:
+    """Create `prototype:variant -> variant_of -> prototype:canonical`
+    if absent. Idempotent via the variant_of_in_out UNIQUE index — a
+    duplicate insert is an error, so we use BEGIN...IF NOT EXISTS
+    semantics via SELECT-first.
+    """
+    existing = db.query(
+        "SELECT id FROM variant_of "
+        "WHERE in = type::thing('prototype', $v) "
+        "  AND out = type::thing('prototype', $c) LIMIT 1;",
+        {"v": variant_id, "c": canonical_id},
+    )[0]["result"]
+    if existing:
+        return
+    db.query(
+        "RELATE type::thing('prototype', $v)->variant_of"
+        "->type::thing('prototype', $c) CONTENT { reason: $r };",
+        {"v": variant_id, "c": canonical_id, "r": reason},
+    )
