@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from functools import cache
 
 from olik_font.compose.flatten import flatten_strokes
 from olik_font.compose.iou import iou_report_for
 from olik_font.constraints.primitives import Primitive
 from olik_font.constraints.primitives import as_dict as primitive_to_dict
-from olik_font.geom import apply_affine_to_point, bbox_of_paths
+from olik_font.geom import (
+    apply_affine_to_path,
+    apply_affine_to_point,
+    bbox_of_paths,
+    bbox_to_bbox_affine,
+    normalize_paths_to_canonical,
+)
 from olik_font.sources.makemeahanzi import MmhChar
 from olik_font.types import Affine, BBox, InstancePlacement, PrototypeLibrary
 
@@ -40,17 +47,7 @@ def build_glyph_record(
 ) -> dict:
     strokes = flatten_strokes(resolved_tree, library)
 
-    mmh_bboxes = tuple(bbox_of_paths([p]) for p in mmh_char.strokes)
-    composed_bboxes = tuple(s.bbox for s in strokes)
-    if len(composed_bboxes) == len(mmh_bboxes):
-        iou = iou_report_for(list(composed_bboxes), list(mmh_bboxes))
-    else:
-        iou = {
-            "mean": 0.0,
-            "min": 0.0,
-            "per_stroke": {},
-            "note": f"stroke count mismatch: composed={len(composed_bboxes)} mmh={len(mmh_bboxes)}",
-        }
+    iou = _build_iou_report(strokes, mmh_char)
 
     return {
         "schema_version": "0.1",
@@ -153,3 +150,99 @@ def _roles_for(node: InstancePlacement, library: PrototypeLibrary) -> dict:
         if proto.roles:
             roles[leaf.instance_id] = {"dong_chinese": proto.roles[0]}
     return roles
+
+
+def _build_iou_report(strokes, mmh_char: MmhChar) -> dict:
+    composed_bboxes = tuple(s.bbox for s in strokes)
+    if len(composed_bboxes) != len(mmh_char.strokes):
+        return {
+            "mean": 0.0,
+            "min": 0.0,
+            "per_stroke": {},
+            "note": f"stroke count mismatch: composed={len(composed_bboxes)} mmh={len(mmh_char.strokes)}",
+        }
+
+    mmh_paths, _ = normalize_paths_to_canonical(tuple(mmh_char.strokes), (0, 0, 1024, 1024))
+    per_stroke: dict[str, float] = {}
+    values: list[float] = []
+    offset = 0
+    for group in _stroke_groups_by_instance(strokes):
+        window_scores = _best_window_scores(group, mmh_paths)
+        for score in window_scores:
+            per_stroke[f"s{offset}"] = score
+            values.append(score)
+            offset += 1
+    return {
+        "mean": sum(values) / len(values),
+        "min": min(values),
+        "per_stroke": per_stroke,
+    }
+
+
+def _stroke_groups_by_instance(strokes) -> tuple[tuple, ...]:
+    grouped: list[list] = []
+    current_id: str | None = None
+    current: list = []
+    for stroke in strokes:
+        if stroke.instance_id != current_id:
+            if current:
+                grouped.append(current)
+            current_id = stroke.instance_id
+            current = [stroke]
+        else:
+            current.append(stroke)
+    if current:
+        grouped.append(current)
+    return tuple(tuple(group) for group in grouped)
+
+
+def _best_window_scores(group, mmh_paths: tuple[str, ...]) -> tuple[float, ...]:
+    group_paths = tuple(stroke.path for stroke in group)
+    n = len(group_paths)
+    best: tuple[float, float, tuple[float, ...]] | None = None
+    for start in range(len(mmh_paths) - n + 1):
+        window = tuple(mmh_paths[start : start + n])
+        affine = bbox_to_bbox_affine(bbox_of_paths(group_paths), bbox_of_paths(window))
+        aligned = tuple(apply_affine_to_path(affine, path) for path in group_paths)
+        scores = _optimal_bbox_scores(aligned, window)
+        candidate = (sum(scores) / len(scores), min(scores), scores)
+        if best is None or candidate[:2] > best[:2]:
+            best = candidate
+    assert best is not None
+    return best[2]
+
+
+def _optimal_bbox_scores(
+    composed_paths: tuple[str, ...],
+    mmh_paths: tuple[str, ...],
+) -> tuple[float, ...]:
+    composed_bboxes = tuple(bbox_of_paths([path]) for path in composed_paths)
+    mmh_bboxes = tuple(bbox_of_paths([path]) for path in mmh_paths)
+    n = len(composed_bboxes)
+    if n == 0:
+        return ()
+
+    matrix = tuple(
+        tuple(float(iou_report_for([composed], [target])["mean"]) for target in mmh_bboxes)
+        for composed in composed_bboxes
+    )
+
+    @cache
+    def _best(i: int, mask: int) -> tuple[float, tuple[int, ...]]:
+        if i == n:
+            return 0.0, ()
+
+        best_total = -1.0
+        best_assign: tuple[int, ...] = ()
+        for j in range(n):
+            if not mask & (1 << j):
+                continue
+            rest_total, rest_assign = _best(i + 1, mask ^ (1 << j))
+            total = matrix[i][j] + rest_total
+            if total > best_total:
+                best_total = total
+                best_assign = (j, *rest_assign)
+        return best_total, best_assign
+
+    _, assignment = _best(0, (1 << n) - 1)
+    return tuple(matrix[i][j] for i, j in enumerate(assignment))

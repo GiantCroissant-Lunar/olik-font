@@ -57,13 +57,13 @@ def main() -> int:
     library = PrototypeLibrary()
     extract_all_prototypes(plan, mmh_chars, library)
     (out / "prototype-library.json").write_text(
-        json.dumps(library_to_dict(library), ensure_ascii=False, indent=2),
+        json.dumps(library_to_dict(library), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
     rules_obj = yaml.safe_load(args.rules.read_text(encoding="utf-8"))
     (out / "rules.json").write_text(
-        json.dumps(rules_obj, ensure_ascii=False, indent=2),
+        json.dumps(rules_obj, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
@@ -94,7 +94,7 @@ def main() -> int:
         record = build_glyph_record(ch, resolved, constraints, library, mmh_char=mmh_chars[ch])
 
         (out / f"glyph-record-{ch}.json").write_text(
-            json.dumps(record, ensure_ascii=False, indent=2),
+            json.dumps(record, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         (out / f"rule-trace-{ch}.json").write_text(
@@ -102,7 +102,8 @@ def main() -> int:
                 {"decisions": [trace_to_dict(decomp_trace), trace_to_dict(compose_trace)]},
                 ensure_ascii=False,
                 indent=2,
-            ),
+            )
+            + "\n",
             encoding="utf-8",
         )
         print(f"wrote {ch}: record + trace")
