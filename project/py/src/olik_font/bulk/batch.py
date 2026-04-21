@@ -75,16 +75,20 @@ def _proto_index_from_db(db) -> ProtoIndex:
     rows = _query_rows(db.query("SELECT * FROM prototype;"))
     plans: list[PrototypePlan] = []
     for row in rows:
-        source = str(row.get("source", ""))
-        from_char = str(row.get("from_char", ""))
-        if not from_char and source:
-            from_char = source[-1:]
+        # `source` on a prototype row is stored as a dict under the Plan 03
+        # emitter contract: {"kind": "mmh-extract", "from_char": "…",
+        # "stroke_indices": [..]}. Top-level from_char / stroke_indices are
+        # used when Plan 09 mints a canonical directly.
+        raw_source = row.get("source")
+        source_dict = raw_source if isinstance(raw_source, dict) else {}
+        from_char = str(row.get("from_char") or source_dict.get("from_char") or "")
+        stroke_indices = row.get("stroke_indices") or source_dict.get("stroke_indices") or ()
         plans.append(
             PrototypePlan(
                 id=_record_key(row["id"], "prototype"),
                 name=str(row.get("name", "")),
                 from_char=from_char,
-                stroke_indices=tuple(row.get("stroke_indices", ())),
+                stroke_indices=tuple(stroke_indices),
                 roles=tuple(row.get("roles", ("meaning",))),
                 anchors=row.get("anchors", {}),
             )
