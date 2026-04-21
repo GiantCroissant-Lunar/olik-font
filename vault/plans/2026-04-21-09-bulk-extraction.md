@@ -4,7 +4,7 @@ created: 2026-04-21
 tags: [type/plan, topic/scene-graph, topic/extraction]
 source: self
 spec: "[[2026-04-21-bulk-extraction-design]]"
-status: draft
+status: complete
 phase: 9
 depends-on:
   - "[[2026-04-21-03-python-compose-cli]]"

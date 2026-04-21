@@ -92,7 +92,7 @@ def test_extract_retry_updates_status(
 
     ensure_schema(db)
     db.query(
-        "UPDATE type::record('glyph', '明') MERGE "
+        "UPSERT type::record('glyph', '明') MERGE "
         "{ char: '明', status: 'unsupported_op', missing_op: 'wb' };"
     )
     monkeypatch.setattr("sys.argv", ["olik", "extract", "retry", "--status", "unsupported_op"])
