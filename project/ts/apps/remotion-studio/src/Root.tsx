@@ -3,6 +3,7 @@ import { Composition, continueRender, delayRender } from "remotion";
 import type { GlyphBundle } from "@olik/glyph-loader";
 import { CharacterAnim, type CharacterAnimProps } from "./compositions/CharacterAnim.js";
 import { DecompositionTree, type DecompositionTreeProps } from "./compositions/DecompositionTree.js";
+import { PrototypeGraph, type PrototypeGraphProps } from "./compositions/PrototypeGraph.js";
 import { loadSeedBundle, SEED_CHARS } from "./load-records.js";
 import { totalStrokeFrames } from "./timing.js";
 
@@ -66,6 +67,15 @@ export const RemotionRoot: React.FC = () => {
           />
         );
       })}
+      <Composition<any, PrototypeGraphProps>
+        id="PrototypeGraph"
+        component={PrototypeGraph}
+        durationInFrames={120}
+        fps={30}
+        width={1280}
+        height={720}
+        defaultProps={{ bundle, highlightChar: undefined }}
+      />
     </>
   );
 };
