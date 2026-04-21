@@ -28,15 +28,18 @@ export const CharacterAnim: React.FC<CharacterAnimProps> = ({
     <AbsoluteFill style={{ background: "#ffffff" }}>
       <svg width={width} height={height}>
         <g transform={`translate(${gx}, ${gy}) scale(${glyphSize / 1024})`}>
-          {showGrid ? <VirtualCoordGrid /> : null}
-          {record.stroke_instances.map((s, i) => (
-            <StrokePath
-              key={s.id}
-              outlinePath={s.path}
-              median={s.median as Array<[number, number]>}
-              progress={strokeProgress({ frame, strokeIndex: i, framesPerStroke })}
-            />
-          ))}
+          {/* MMH strokes are y-up; flip to SVG y-down so the char reads right-side up. */}
+          <g transform="translate(0,1024) scale(1,-1)">
+            {showGrid ? <VirtualCoordGrid /> : null}
+            {record.stroke_instances.map((s, i) => (
+              <StrokePath
+                key={s.id}
+                outlinePath={s.path}
+                median={s.median as Array<[number, number]>}
+                progress={strokeProgress({ frame, strokeIndex: i, framesPerStroke })}
+              />
+            ))}
+          </g>
         </g>
         <g transform="translate(40, 40)">
           <text fontSize={56} fontFamily="serif">{char}</text>

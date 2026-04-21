@@ -7,7 +7,7 @@ import { LayerZDepth, type LayerZDepthProps } from "./compositions/LayerZDepth.j
 import { PrototypeGraph, type PrototypeGraphProps } from "./compositions/PrototypeGraph.js";
 import { Storyboard, type StoryboardProps } from "./compositions/Storyboard.js";
 import { VirtualCoord, type VirtualCoordProps } from "./compositions/VirtualCoord.js";
-import { loadSeedBundle, SEED_CHARS } from "./load-records.js";
+import { loadStudioBundle, SEED_CHARS } from "./load-records-studio.js";
 import { totalStrokeFrames } from "./timing.js";
 
 const FRAMES_PER_STROKE = 12;
@@ -17,7 +17,7 @@ export const RemotionRoot: React.FC = () => {
   const [handle] = React.useState(() => delayRender("load-bundle"));
 
   React.useEffect(() => {
-    loadSeedBundle()
+    loadStudioBundle()
       .then((b) => {
         setBundle(b);
         continueRender(handle);
