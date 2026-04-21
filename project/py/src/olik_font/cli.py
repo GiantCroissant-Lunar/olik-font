@@ -221,7 +221,119 @@ def _cmd_db_reset(args: argparse.Namespace) -> int:
 
 
 def _cmd_db_export(args: argparse.Namespace) -> int:
-    raise NotImplementedError("db export - implemented in Task 6")
+    from olik_font.sink.connection import connect
+
+    out: Path = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    db = connect()
+
+    proto_rows = _query_rows(db.query("SELECT * FROM prototype;"))
+    library = {
+        "prototypes": {
+            _record_key(row["id"], "prototype"): {
+                k: _json_ready(v) for k, v in row.items() if k not in {"id"}
+            }
+            for row in proto_rows
+        }
+    }
+    (out / "prototype-library.json").write_text(
+        json.dumps(library, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    rule_rows = _query_rows(db.query("SELECT id, pattern, bucket, resolution FROM rule;"))
+    (out / "rules.json").write_text(
+        json.dumps(
+            [
+                {
+                    **_json_ready(row),
+                    "id": _record_key(row["id"], "rule"),
+                }
+                for row in rule_rows
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    glyph_rows = _query_rows(db.query("SELECT * FROM glyph;"))
+    for g in glyph_rows:
+        ch = g["char"]
+        edges = _query_rows(
+            db.query(
+                "SELECT instance_id, position, placed_bbox, out AS prototype_ref "
+                "FROM uses WHERE in = type::record('glyph', $char);",
+                {"char": ch},
+            )
+        )
+        export_row = {k: _json_ready(v) for k, v in g.items() if k not in {"id"}}
+        export_row["component_instances"] = [
+            {
+                "id": e["instance_id"],
+                "prototype_ref": _record_key(e["prototype_ref"], "prototype"),
+                "position": e.get("position"),
+                "placed_bbox": e.get("placed_bbox"),
+            }
+            for e in edges
+        ]
+        (out / f"glyph-record-{ch}.json").write_text(
+            json.dumps(export_row, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    for g in glyph_rows:
+        ch = g["char"]
+        trace_rows = _query_rows(
+            db.query(
+                "SELECT rule, fired, order, alternative FROM rule_trace "
+                "WHERE glyph = type::record('glyph', $char) ORDER BY order;",
+                {"char": ch},
+            )
+        )
+        simple = [
+            {
+                "rule_id": _record_key(t["rule"], "rule"),
+                "fired": t["fired"],
+                "order": t["order"],
+                "alternative": t.get("alternative", False),
+            }
+            for t in trace_rows
+        ]
+        (out / f"rule-trace-{ch}.json").write_text(
+            json.dumps(simple, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return 0
+
+
+def _query_rows(payload: object) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        if payload and isinstance(payload[0], dict) and "result" in payload[0]:
+            return payload[0]["result"]
+        return payload
+    if isinstance(payload, dict):
+        return payload["result"]
+    raise TypeError(f"unexpected query payload: {type(payload)!r}")
+
+
+def _record_key(value: object, table: str) -> str:
+    if getattr(value, "table_name", None) == table and isinstance(getattr(value, "id", None), str):
+        return value.id
+    text = str(value)
+    prefix = f"{table}:"
+    if text.startswith(prefix):
+        return text[len(prefix) :].removeprefix("⟨").removesuffix("⟩")
+    return text
+
+
+def _json_ready(value: object) -> object:
+    table_name = getattr(value, "table_name", None)
+    record_id = getattr(value, "id", None)
+    if isinstance(table_name, str) and isinstance(record_id, str):
+        return f"{table_name}:{record_id}"
+    if isinstance(value, dict):
+        return {k: _json_ready(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    return value
 
 
 def _rules_catalog(rule_set: RuleSet) -> list[dict[str, str]]:
