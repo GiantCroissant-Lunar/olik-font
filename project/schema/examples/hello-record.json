@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1",
+  "glyph_id": "hello",
+  "unicode": "U+0000",
+  "coord_space": { "width": 1024, "height": 1024, "origin": "top-left", "y_axis": "down" },
+  "source": { "stroke_source": "hand-authored", "decomp_source": "hand-authored" },
+  "layout_tree": {
+    "id": "root",
+    "bbox": [0, 0, 1024, 1024],
+    "mode": "keep",
+    "depth": 0,
+    "prototype_ref": "proto:hello",
+    "transform": { "translate": [0,0], "scale": [1,1], "rotate": 0, "shear": [0,0] },
+    "input_adapter": "direct",
+    "children": []
+  },
+  "component_instances": [
+    {
+      "id": "inst:hello",
+      "prototype_ref": "proto:hello",
+      "transform": { "translate": [0,0], "scale": [1,1], "rotate": 0, "shear": [0,0] },
+      "placed_bbox": [0, 0, 1024, 1024]
+    }
+  ],
+  "stroke_instances": [
+    {
+      "id": "s0",
+      "instance_id": "inst:hello",
+      "order": 0,
+      "path": "M 0 512 L 1024 512",
+      "median": [[0, 512], [1024, 512]],
+      "bbox": [0, 512, 1024, 512],
+      "z": 10,
+      "role": "horizontal"
+    }
+  ],
+  "constraints": [],
+  "render_layers": [
+    { "name": "skeleton",        "z_min": 0,  "z_max": 9  },
+    { "name": "stroke_body",     "z_min": 10, "z_max": 49 },
+    { "name": "stroke_edge",     "z_min": 50, "z_max": 69 },
+    { "name": "texture_overlay", "z_min": 70, "z_max": 89 },
+    { "name": "damage",          "z_min": 90, "z_max": 99 }
+  ],
+  "roles": { "inst:hello": { "dong_chinese": "meaning" } },
+  "metadata": {
+    "generated_at": "2026-04-21T00:00:00Z",
+    "generator": "hand-authored",
+    "iou_report": { "mean": 1.0, "min": 1.0, "per_stroke": { "s0": 1.0 } }
+  }
+}
