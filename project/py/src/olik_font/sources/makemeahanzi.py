@@ -74,12 +74,8 @@ def load_mmh_dictionary(path: Path) -> dict[str, MmhDictEntry]:
     return out
 
 
-MMH_GRAPHICS_URL = (
-    "https://raw.githubusercontent.com/skishore/makemeahanzi/master/graphics.txt"
-)
-MMH_DICTIONARY_URL = (
-    "https://raw.githubusercontent.com/skishore/makemeahanzi/master/dictionary.txt"
-)
+MMH_GRAPHICS_URL = "https://raw.githubusercontent.com/skishore/makemeahanzi/master/graphics.txt"
+MMH_DICTIONARY_URL = "https://raw.githubusercontent.com/skishore/makemeahanzi/master/dictionary.txt"
 
 
 def _http_get(url: str) -> bytes:

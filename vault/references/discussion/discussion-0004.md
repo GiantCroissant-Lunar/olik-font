@@ -632,6 +632,3 @@ but the best version is recursive refinement on top of IDS, not IDS alone
 The sentence I would use for the design doc is:
 
 IDS provides the initial hierarchical scaffold; the glyph scene tree refines that scaffold into reusable atomic prototypes for reconstruction and style control.
-
-
-

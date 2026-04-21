@@ -1,0 +1,159 @@
+# Taskfile — unified shortcuts for the repo. https://taskfile.dev
+#
+# Quick usage:
+#   task              # list available tasks
+#   task setup        # one-time: set up venv, install deps, pre-commit hooks
+#   task test         # run everything (py + ts)
+#   task lint         # check formatting + lint (py + ts)
+#   task fmt          # apply formatting fixes
+#   task archon:run WF=plan-02-python-core
+#   task cliff        # regenerate CHANGELOG.md
+
+version: "3"
+
+vars:
+  PY_DIR: project/py
+  TS_DIR: project/ts
+  VENV: project/py/.venv
+  PYTEST: "{{.VENV}}/bin/pytest"
+  RUFF: "{{.VENV}}/bin/ruff"
+  PIP: "{{.VENV}}/bin/pip"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  # ─── Setup ─────────────────────────────────────────────────────────────
+  setup:
+    desc: One-time setup — venv, pnpm, pre-commit hooks
+    cmds:
+      - task: setup:py
+      - task: setup:ts
+      - task: setup:hooks
+
+  setup:py:
+    desc: Create venv + install Python deps
+    cmds:
+      - |
+        cd {{.PY_DIR}}
+        if [ ! -x .venv/bin/pytest ]; then
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+        fi
+
+  setup:ts:
+    desc: Install pnpm workspace deps
+    cmds:
+      - cd {{.TS_DIR}} && pnpm install
+
+  setup:hooks:
+    desc: Install pre-commit git hooks
+    cmds:
+      - pre-commit install --install-hooks
+
+  # ─── Test ──────────────────────────────────────────────────────────────
+  test:
+    desc: Run all tests (py + ts)
+    deps: [test:py, test:ts]
+
+  test:py:
+    desc: Run pytest
+    cmds:
+      - cd {{.PY_DIR}} && ../../{{.PYTEST}} -v
+
+  test:ts:
+    desc: Run vitest across all ts packages
+    cmds:
+      - cd {{.TS_DIR}} && pnpm -r --parallel test
+
+  # ─── Lint / Format ─────────────────────────────────────────────────────
+  lint:
+    desc: Check formatting + lint across everything
+    deps: [lint:py, lint:ts, lint:commits]
+
+  lint:py:
+    desc: Ruff format check + lint
+    cmds:
+      - cd {{.PY_DIR}} && ../../{{.RUFF}} format --check .
+      - cd {{.PY_DIR}} && ../../{{.RUFF}} check .
+
+  lint:ts:
+    desc: Biome check
+    cmds:
+      - cd {{.TS_DIR}} && pnpm run lint
+
+  lint:commits:
+    desc: Verify recent commits follow conventional-commit format
+    cmds:
+      - pre-commit run conventional-pre-commit --from-ref HEAD~10 --to-ref HEAD || true
+
+  fmt:
+    desc: Apply formatting fixes (py + ts)
+    deps: [fmt:py, fmt:ts]
+
+  fmt:py:
+    cmds:
+      - cd {{.PY_DIR}} && ../../{{.RUFF}} format .
+      - cd {{.PY_DIR}} && ../../{{.RUFF}} check --fix .
+
+  fmt:ts:
+    cmds:
+      - cd {{.TS_DIR}} && pnpm run format
+
+  # ─── Build ─────────────────────────────────────────────────────────────
+  build:ts:
+    desc: Build all ts packages
+    cmds:
+      - cd {{.TS_DIR}} && pnpm -r --filter './packages/*' run build
+
+  typecheck:ts:
+    desc: Typecheck all ts packages
+    cmds:
+      - cd {{.TS_DIR}} && pnpm run typecheck
+
+  # ─── Archon ────────────────────────────────────────────────────────────
+  # Run workflows. Override workflow name via WF=<name>.
+  archon:run:
+    desc: "Run an Archon workflow. Usage: task archon:run WF=plan-02-python-core"
+    vars:
+      WF: '{{.WF | default "plan-02-python-core"}}'
+    cmds:
+      - set -a; source infra/.env; set +a; env -u CLAUDECODE archon workflow run {{.WF}}
+
+  archon:status:
+    desc: Show Archon workflow status
+    cmds:
+      - set -a; source infra/.env; set +a; env -u CLAUDECODE archon workflow status
+
+  archon:validate:
+    desc: Validate all Archon workflow YAMLs
+    cmds:
+      - set -a; source infra/.env; set +a; env -u CLAUDECODE archon validate workflows
+
+  # ─── Changelog ─────────────────────────────────────────────────────────
+  cliff:
+    desc: Regenerate CHANGELOG.md from conventional commits
+    cmds:
+      - git-cliff --config cliff.toml --output CHANGELOG.md
+
+  cliff:unreleased:
+    desc: Show changelog for unreleased commits
+    cmds:
+      - git-cliff --config cliff.toml --unreleased
+
+  # ─── Housekeeping ──────────────────────────────────────────────────────
+  clean:
+    desc: Remove venv, node_modules, pytest caches, dist dirs
+    cmds:
+      - rm -rf {{.VENV}} {{.PY_DIR}}/.pytest_cache {{.PY_DIR}}/**/__pycache__
+      - rm -rf {{.TS_DIR}}/node_modules {{.TS_DIR}}/**/node_modules {{.TS_DIR}}/**/dist
+
+  worktree:list:
+    desc: List all git worktrees (including Archon's)
+    cmds:
+      - git worktree list
+      - echo "---"
+      - ls -la ~/.archon/worktrees 2>/dev/null || echo "(no archon worktrees yet)"

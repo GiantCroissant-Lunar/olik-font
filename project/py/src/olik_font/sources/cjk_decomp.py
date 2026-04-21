@@ -16,7 +16,9 @@ from pathlib import Path
 # which is a JS module exporting the raw text. We provide an extractor.
 
 _LINE_RE = re.compile(r"^([^:]+):(?:([a-z][a-z0-9/]*|0)(?:\(([^)]*)\))?)")
-_JS_WRAPPER_RE = re.compile(r"""module\.exports\s*=\s*(?P<quote>[`"'])(?P<body>.*?)(?P=quote)\s*;?\s*$""", re.DOTALL)
+_JS_WRAPPER_RE = re.compile(
+    r"""module\.exports\s*=\s*(?P<quote>[`"'])(?P<body>.*?)(?P=quote)\s*;?\s*$""", re.DOTALL
+)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,0 +1,52 @@
+# Pre-commit hook configuration.
+# See: https://pre-commit.com/
+# Install: `task setup:hooks` (or `pre-commit install --install-hooks`).
+# Run on all files: `pre-commit run --all-files`.
+
+default_language_version:
+  python: python3.11
+
+default_stages: [pre-commit]
+
+repos:
+  # ─── Universal sanity ────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+        exclude: "^project/ts/tsconfig\\.base\\.json$"  # allows JSONC comments
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  # ─── Python: ruff handles both format + lint ─────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.2
+    hooks:
+      - id: ruff
+        name: ruff-check
+        args: ["--fix"]
+        files: '^project/py/.*\.py$'
+      - id: ruff-format
+        files: '^project/py/.*\.py$'
+
+  # ─── TypeScript: Biome via local hook (biome is a pnpm devDep) ───────
+  - repo: local
+    hooks:
+      - id: biome
+        name: biome check (ts)
+        entry: bash -c 'cd project/ts && pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true "$@"' --
+        language: system
+        files: '^project/ts/.*\.(ts|tsx|js|jsx|json)$'
+        pass_filenames: true
+
+  # ─── Commit message: conventional commits ────────────────────────────
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: []  # defaults: feat, fix, chore, docs, style, refactor, perf, test, build, ci, revert

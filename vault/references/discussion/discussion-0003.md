@@ -12,15 +12,15 @@ Is there any existing project to color Chinese symbol as Canjile does?
 I’m checking what “Canjile” refers to and looking for similar Chinese-character coloring projects so I can compare actual existing tools, not guess.
 
 Thought for 2m 23s
-Assuming you mean coloring parts of a Chinese character by role or component rather than tone coloring, then yes, there are related projects. The closest ready-made example I found is Dong Chinese / Chinese Character Wiki: it explicitly color-codes character parts by function, such as meaning components in red, sound components in blue, iconic components in green, distinguishing components in purple, and unknown components in gray. 
+Assuming you mean coloring parts of a Chinese character by role or component rather than tone coloring, then yes, there are related projects. The closest ready-made example I found is Dong Chinese / Chinese Character Wiki: it explicitly color-codes character parts by function, such as meaning components in red, sound components in blue, iconic components in green, distinguishing components in purple, and unknown components in gray.
 
-Other useful projects are a bit more “decomposition/data” than “finished colorizer.” HanziCraft breaks characters into components and highlights phonetic patterns; HanziVG provides SVGs plus metadata for radicals/components; Make Me a Hanzi provides downloadable dictionary and stroke-order vector data for 9,000+ common characters; and Radically is a component-based CJK search engine. Those are good foundations if you want to build a Canjile-like renderer yourself. 
+Other useful projects are a bit more “decomposition/data” than “finished colorizer.” HanziCraft breaks characters into components and highlights phonetic patterns; HanziVG provides SVGs plus metadata for radicals/components; Make Me a Hanzi provides downloadable dictionary and stroke-order vector data for 9,000+ common characters; and Radically is a component-based CJK search engine. Those are good foundations if you want to build a Canjile-like renderer yourself.
 
 So the practical answer is:
 
-Closest existing learner-facing project: Dong Chinese. 
+Closest existing learner-facing project: Dong Chinese.
 
-Best building blocks for your own project: HanziVG + Make Me a Hanzi, optionally with HanziCraft or Radically for decomposition/search. 
+Best building blocks for your own project: HanziVG + Make Me a Hanzi, optionally with HanziCraft or Radically for decomposition/search.
 
 If you want, I can also narrow this down to open-source libraries specifically suited to implement the same coloring style in a web app.
 
@@ -44,29 +44,29 @@ Show more
 I’m checking the linked repos and papers to separate what already works in practice from what is only a research prototype, then I’ll map that onto a realistic ComfyUI pipeline.
 
 Thought for 31s
-Yes — but the workable way is to use ComfyUI as the orchestration layer, not as the core font-generation algorithm. ComfyUI is built around modular graph workflows, supports custom nodes/extensions, and only re-executes the parts of a graph that change, which makes it a good fit for batch glyph rendering, preprocessing, inference, cleanup, and export. 
+Yes — but the workable way is to use ComfyUI as the orchestration layer, not as the core font-generation algorithm. ComfyUI is built around modular graph workflows, supports custom nodes/extensions, and only re-executes the parts of a graph that change, which makes it a good fit for batch glyph rendering, preprocessing, inference, cleanup, and export.
 
-The big distinction is the output target. Styled Chinese text images are very feasible now. A real installable Chinese font is also feasible, but much harder because you need consistent results across thousands of glyphs, plus vectorization, spacing, punctuation, numerals, and packaging. Recent surveys note that bitmap-based methods are easier to plug into mainstream generative models, while vector fonts are much better for scalability and editing but are harder to generate well. The same survey also treats creating fonts directly from textual descriptions as more of a future direction than a solved production pipeline. 
+The big distinction is the output target. Styled Chinese text images are very feasible now. A real installable Chinese font is also feasible, but much harder because you need consistent results across thousands of glyphs, plus vectorization, spacing, punctuation, numerals, and packaging. Recent surveys note that bitmap-based methods are easier to plug into mainstream generative models, while vector fonts are much better for scalability and editing but are harder to generate well. The same survey also treats creating fonts directly from textual descriptions as more of a future direction than a solved production pipeline.
 
 Your links actually cover almost the whole stack:
 
-pix2pix is the old image-to-image base model. zi2zi explicitly says it is an application/extension of pix2pix for Chinese/CJK glyphs, with multi-style training and style embeddings, so it is still a sensible baseline for paired font-to-font transfer. 
+pix2pix is the old image-to-image base model. zi2zi explicitly says it is an application/extension of pix2pix for Chinese/CJK glyphs, with multi-style training and style embeddings, so it is still a sensible baseline for paired font-to-font transfer.
 
-Rewrite is an earlier proof of concept, and its own repo says to use zi2zi for better results. It is also very old technically. 
+Rewrite is an earlier proof of concept, and its own repo says to use zi2zi for better results. It is also very old technically.
 
-The stroke semantic + attention paper is more structurally aware: it says it adds stroke-semantic priors plus an attention skip-connection module, and reports better results than pix2pix, zi2zi, and DCFont on public datasets. 
+The stroke semantic + attention paper is more structurally aware: it says it adds stroke-semantic priors plus an attention skip-connection module, and reports better results than pix2pix, zi2zi, and DCFont on public datasets.
 
-The SPIE paper is useful if you do not have neatly paired source/target glyph datasets, because it frames the problem as improved CycleGAN-based style migration and explicitly targets missing structure, blur, and paired-data dependence. 
+The SPIE paper is useful if you do not have neatly paired source/target glyph datasets, because it frames the problem as improved CycleGAN-based style migration and explicitly targets missing structure, blur, and paired-data dependence.
 
-CCFont is probably the strongest structural idea in your list for complex characters: its README describes a component-based GAN using up to 17 components, aiming to reduce information loss and support first-seen characters/styles. 
+CCFont is probably the strongest structural idea in your list for complex characters: its README describes a component-based GAN using up to 17 components, aiming to reduce information loss and support first-seen characters/styles.
 
-DP-Font is the most modern calligraphy-oriented item you linked. It uses a diffusion model with multi-attribute guidance, explicit stroke-order conditioning, and a PINN loss to improve realism and calligraphic plausibility. 
+DP-Font is the most modern calligraphy-oriented item you linked. It uses a diffusion model with multi-attribute guidance, explicit stroke-order conditioning, and a PINN loss to improve realism and calligraphic plausibility.
 
-qiji-font is not a generator, but it is extremely useful for the back end of the pipeline: scan/OCR extraction, cleanup, raster-to-vector conversion with Potrace, and final font assembly with FontForge. 
+qiji-font is not a generator, but it is extremely useful for the back end of the pipeline: scan/OCR extraction, cleanup, raster-to-vector conversion with Potrace, and final font assembly with FontForge.
 
-The Chinese calligraphy pattern generator is only a template/PNG renderer for entered text, so it is a UI/reference tool, not a model component. 
+The Chinese calligraphy pattern generator is only a template/PNG renderer for entered text, so it is a UI/reference tool, not a model component.
 
-The main catch is that the older public repos are dated. zi2zi still lists Python 2.7 and TensorFlow >= 1.0.1; Rewrite says it was tested on TensorFlow 0.10.0. So I would not try to smash all of this into one native ComfyUI codebase. A better route is to wrap legacy pieces behind custom nodes or subprocess/container boundaries, or reimplement the chosen model in modern PyTorch and let ComfyUI handle the workflow around it. 
+The main catch is that the older public repos are dated. zi2zi still lists Python 2.7 and TensorFlow >= 1.0.1; Rewrite says it was tested on TensorFlow 0.10.0. So I would not try to smash all of this into one native ComfyUI codebase. A better route is to wrap legacy pieces behind custom nodes or subprocess/container boundaries, or reimplement the chosen model in modern PyTorch and let ComfyUI handle the workflow around it.
 
 A realistic ComfyUI architecture would be:
 
@@ -74,7 +74,7 @@ Text → base glyph rasterizer
 Render the input text from a neutral source font into per-character images.
 
 Optional structure branch
-Add component/stroke hints when available. This is where CCFont-style decomposition or stroke-order/stroke-semantic priors help most on Chinese. 
+Add component/stroke hints when available. This is where CCFont-style decomposition or stroke-order/stroke-semantic priors help most on Chinese.
 
 Generator node
 Pick one core model, not five:
@@ -85,7 +85,7 @@ improved CycleGAN if your style references are unpaired,
 
 DP-Font if the target is expressive calligraphy,
 
-CCFont-like if consistency on complex characters matters more than brush realism. 
+CCFont-like if consistency on complex characters matters more than brush realism.
 
 Cleanup/postprocess
 Thresholding, denoising, edge cleanup, centering, size normalization.
@@ -94,7 +94,7 @@ Text compositor
 Reassemble generated glyphs into lines, paragraphs, posters, banners, etc.
 
 Optional font export
-Use a qiji-font-style tail: raster cleanup → Potrace/SVG → FontForge packaging. 
+Use a qiji-font-style tail: raster cleanup → Potrace/SVG → FontForge packaging.
 
 So my honest view is:
 
@@ -102,7 +102,7 @@ For styled Chinese text rendering: yes, absolutely realistic.
 
 For a full Chinese font generator: yes, but only as a staged system, and only if you accept that consistency and export quality will take more engineering than the model itself.
 
-For “prompt-only, describe a style in words and get a complete font”: not really production-ready yet; the survey still frames text-conditioned font creation as an open direction. 
+For “prompt-only, describe a style in words and get a complete font”: not really production-ready yet; the survey still frames text-conditioned font creation as an open direction.
 
 If I were building this, I would start with ComfyUI + one generator + qiji-font-style export, specifically:
 
@@ -110,9 +110,9 @@ fast PoC: neutral font rasterizer → zi2zi-like generator → compose text imag
 
 better Chinese structure: replace generator with CCFont-like or stroke-semantic model
 
-best calligraphy look: DP-Font-like generator for raster output, then vectorize only after cleanup 
+best calligraphy look: DP-Font-like generator for raster output, then vectorize only after cleanup
 
-One last practical note: if you redistribute a combined system, review the repo licenses carefully, because your links span different licenses, including Apache-2.0 for zi2zi, GPL-3.0 for Rewrite, OFL-1.1 for qiji-font, and GPL-3.0 for ComfyUI. 
+One last practical note: if you redistribute a combined system, review the repo licenses carefully, because your links span different licenses, including Apache-2.0 for zi2zi, GPL-3.0 for Rewrite, OFL-1.1 for qiji-font, and GPL-3.0 for ComfyUI.
 
 I can sketch a concrete ComfyUI node graph for the best version of this stack next.
 
@@ -127,11 +127,11 @@ I’m checking whether HanziCraft-style decomposition is enough for font reconst
 Thought for 31s
 Yes — I think that is the right direction, and it matches where the stronger recent work has gone.
 
-What you are proposing is a shift from character-level generation to component-level generation + layout composition. That is attractive for Chinese because HanziCraft already exposes decomposition views down to radicals and lower graphical parts, and it also highlights highly reused “productive components,” which is exactly the kind of reuse signal you want in a scalable system. HanziCraft’s own pages show decomposition levels such as “once,” “radical,” and “graphical,” plus lists of productive components and phonetic sets. 
+What you are proposing is a shift from character-level generation to component-level generation + layout composition. That is attractive for Chinese because HanziCraft already exposes decomposition views down to radicals and lower graphical parts, and it also highlights highly reused “productive components,” which is exactly the kind of reuse signal you want in a scalable system. HanziCraft’s own pages show decomposition levels such as “once,” “radical,” and “graphical,” plus lists of productive components and phonetic sets.
 
-In other words, instead of learning 10,000+ glyphs independently, you learn a much smaller library of styled components, then learn how to place, deform, and combine them per character. That is not just a nice idea; it is already supported by recent font-generation research. CCFont explicitly generates Chinese characters from components and says it handles up to 17 components per character. A 2024 vector-font paper goes even further: it argues that most Chinese characters can be disassembled into frequently reused components, then composes large-scale vector characters from a small set of components plus layout information. 
+In other words, instead of learning 10,000+ glyphs independently, you learn a much smaller library of styled components, then learn how to place, deform, and combine them per character. That is not just a nice idea; it is already supported by recent font-generation research. CCFont explicitly generates Chinese characters from components and says it handles up to 17 components per character. A 2024 vector-font paper goes even further: it argues that most Chinese characters can be disassembled into frequently reused components, then composes large-scale vector characters from a small set of components plus layout information.
 
-The key refinement is this: components alone are not enough. You also need a representation of structure. Modern work often uses IDS or similar structural encodings, not just a bag of parts. IF-Font, for example, explicitly follows Ideographic Description Sequence structure so the model can control content through component hierarchy and spatial relations. IDS-based work is useful here because Chinese characters are not only “which parts,” but also “which arrangement”: left-right, top-bottom, enclosure, and nested structures. 
+The key refinement is this: components alone are not enough. You also need a representation of structure. Modern work often uses IDS or similar structural encodings, not just a bag of parts. IF-Font, for example, explicitly follows Ideographic Description Sequence structure so the model can control content through component hierarchy and spatial relations. IDS-based work is useful here because Chinese characters are not only “which parts,” but also “which arrangement”: left-right, top-bottom, enclosure, and nested structures.
 
 So I would phrase your idea like this:
 
@@ -141,13 +141,13 @@ style the components, but compose the characters with a structural/layout model.
 That gives you three big wins:
 
 Coverage scales better.
-You do not need fully separate style learning for every character. A reusable component bank can cover many more glyphs than pure per-character transfer. That is exactly the motivation behind the component-composition vector-font paper. 
+You do not need fully separate style learning for every character. A reusable component bank can cover many more glyphs than pure per-character transfer. That is exactly the motivation behind the component-composition vector-font paper.
 
 Rare characters become more feasible.
-If a rare character is just a new arrangement of known parts, you can synthesize it without ever seeing that whole character during training. That is one of the selling points behind component-based and IDS-following methods. 
+If a rare character is just a new arrangement of known parts, you can synthesize it without ever seeing that whole character during training. That is one of the selling points behind component-based and IDS-following methods.
 
 Vector output becomes much more realistic.
-If you store styled components as vector outlines or strokes, then compose them with transforms, you are much closer to a real font pipeline than with pure raster GAN output. The 2024 component-composition paper is explicitly about scalable vector font generation. 
+If you store styled components as vector outlines or strokes, then compose them with transforms, you are much closer to a real font pipeline than with pure raster GAN output. The 2024 component-composition paper is explicitly about scalable vector font generation.
 
 The main caveat is that a component is not visually identical in every context. In real fonts, a component often changes depending on where it appears. For example, the same radical may become narrower on the left, flatter on top, compressed inside an enclosure, or optically adjusted to avoid collisions. So a practical system needs more than “retrieve component A and paste it.” It needs at least:
 
@@ -159,14 +159,14 @@ context-aware affine or nonlinear deformation for each component,
 
 and optical correction after composition.
 
-That is also why the vector component-composition paper emphasizes not just components, but layout information and learned transformations. 
+That is also why the vector component-composition paper emphasizes not just components, but layout information and learned transformations.
 
 So my answer is:
 
 Yes, your component-first idea is better than styling each full Chinese character independently.
 But the real unit is not just “component.” It is:
 
-component style + structural relation + context-dependent deformation. 
+component style + structural relation + context-dependent deformation.
 
 For ComfyUI, that means the graph should probably look like this:
 
@@ -184,7 +184,7 @@ Node 6: optional refinement model for stroke cleanup / consistency
 
 Node 7: assemble text line or export font glyph data
 
-One important nuance: HanziCraft is very useful as a symbolic decomposition source, but based on its public pages it looks learner/decomposition-oriented rather than font-geometry-oriented. So I would treat it as a source for what parts a character contains, not as a complete source for how those parts should be drawn and positioned in a font. That second part still has to come from your own layout data or a trained model. That is an inference from the site’s published decomposition/frequency/phonetic focus. 
+One important nuance: HanziCraft is very useful as a symbolic decomposition source, but based on its public pages it looks learner/decomposition-oriented rather than font-geometry-oriented. So I would treat it as a source for what parts a character contains, not as a complete source for how those parts should be drawn and positioned in a font. That second part still has to come from your own layout data or a trained model. That is an inference from the site’s published decomposition/frequency/phonetic focus.
 
 So the shortest version is:
 
@@ -211,9 +211,9 @@ The stroke/vector side is looking promising: Make Me a Hanzi already exposes IDS
 Thought for 1m 17s
 Yes — that split makes sense to me.
 
-I would treat reconstruction as a deterministic geometry pipeline and ComfyUI as a styling/refinement pipeline. That fits the available data sources surprisingly well: HanziCraft is useful for decomposition and “productive components,” HanziVG is aimed at stroke-order SVGs plus component/radical metadata, and Make Me a Hanzi already provides IDS-style decomposition, stroke-to-component matching, stroke SVG paths, medians, and even experimental animated SVGs. 
+I would treat reconstruction as a deterministic geometry pipeline and ComfyUI as a styling/refinement pipeline. That fits the available data sources surprisingly well: HanziCraft is useful for decomposition and “productive components,” HanziVG is aimed at stroke-order SVGs plus component/radical metadata, and Make Me a Hanzi already provides IDS-style decomposition, stroke-to-component matching, stroke SVG paths, medians, and even experimental animated SVGs.
 
-Your virtual coordinate idea is especially strong because Make Me a Hanzi already uses a fixed coordinate system for strokes: its graphics.txt stores stroke SVG paths on a 1024×1024 coordinate space, and also provides medians for each stroke. It also includes a matches field that maps a character’s strokes back into its decomposition tree, which is exactly the kind of bridge you need between symbolic structure and drawable geometry. 
+Your virtual coordinate idea is especially strong because Make Me a Hanzi already uses a fixed coordinate system for strokes: its graphics.txt stores stroke SVG paths on a 1024×1024 coordinate space, and also provides medians for each stroke. It also includes a matches field that maps a character’s strokes back into its decomposition tree, which is exactly the kind of bridge you need between symbolic structure and drawable geometry.
 
 So I would make the canonical representation:
 
@@ -232,7 +232,7 @@ fill, edge roughness, brush texture, bleed, damage, ink pooling.
 Level 5: export
 raster preview, SVG, then font packaging.
 
-That matches the way the public data is organized: HanziCraft and Make Me a Hanzi are strong on decomposition, while qiji-font shows that the downstream reconstruction/export side can live in a separate pipeline using OCR/selection, vector tracing, and FontForge packaging. 
+That matches the way the public data is organized: HanziCraft and Make Me a Hanzi are strong on decomposition, while qiji-font shows that the downstream reconstruction/export side can live in a separate pipeline using OCR/selection, vector tracing, and FontForge packaging.
 
 I would not make the quadtree your primary model. I would make the IDS/layout tree the primary model, and use a quadtree only as a helper for:
 
@@ -246,9 +246,9 @@ local repainting,
 
 overlap/ink-bleed simulation.
 
-Chinese glyph construction is fundamentally relational — left-right, top-bottom, enclosure, overlay, nested enclosure — and that is better captured by a decomposition/layout tree than by pure spatial partitioning. The quadtree is still useful, but as an acceleration structure, not the authoring structure. The matches and IDS fields in Make Me a Hanzi are a strong hint in that direction. 
+Chinese glyph construction is fundamentally relational — left-right, top-bottom, enclosure, overlay, nested enclosure — and that is better captured by a decomposition/layout tree than by pure spatial partitioning. The quadtree is still useful, but as an acceleration structure, not the authoring structure. The matches and IDS fields in Make Me a Hanzi are a strong hint in that direction.
 
-For z-depth, I think you are also right, but I would apply it carefully. In regular printed styles, z-depth can stay fairly shallow: component fill, stroke body, stroke edge, texture/effect overlays. In more handwritten or cursive styles, z-depth becomes more important because stroke crossings, stroke joins, dry-brush effects, and partial occlusions are part of the look. Since Make Me a Hanzi provides stroke order and stroke medians, you can use that as the base ordering signal before adding style-specific layering rules. 
+For z-depth, I think you are also right, but I would apply it carefully. In regular printed styles, z-depth can stay fairly shallow: component fill, stroke body, stroke edge, texture/effect overlays. In more handwritten or cursive styles, z-depth becomes more important because stroke crossings, stroke joins, dry-brush effects, and partial occlusions are part of the look. Since Make Me a Hanzi provides stroke order and stroke medians, you can use that as the base ordering signal before adding style-specific layering rules.
 
 So the clean pipeline would be:
 
@@ -270,7 +270,7 @@ obey layout tree and z-order
 
 Final glyph → text layout / SVG / FontForge export
 
-That division also fits ComfyUI’s role well: its strength is being a node/graph workflow interface that can chain multiple processing stages, not being the source of truth for CJK structural reconstruction. 
+That division also fits ComfyUI’s role well: its strength is being a node/graph workflow interface that can chain multiple processing stages, not being the source of truth for CJK structural reconstruction.
 
 The biggest technical risk is this: a component is not visually identical in every context. A left-side component often becomes narrower; a top component flatter; an enclosed component more compressed; some styles even change terminals or stroke joins depending on position. So the stored object should not just be “component bitmap.” It should be something like:
 
@@ -302,7 +302,7 @@ and keep ComfyUI limited to styling/refinement, not reconstruction.
 
 That gives you a system that can scale beyond 10,000 characters much better than full-glyph generation.
 
-One extra useful detail: although I could not directly verify your exact animHanzi page because it timed out during fetch, Make Me a Hanzi explicitly points to a related gooo.free.fr stroke-order demo in its README, which reinforces that this ecosystem already supports animation/rendering from structured stroke data rather than from flat glyph images. 
+One extra useful detail: although I could not directly verify your exact animHanzi page because it timed out during fetch, Make Me a Hanzi explicitly points to a related gooo.free.fr stroke-order demo in its README, which reinforces that this ecosystem already supports animation/rendering from structured stroke data rather than from flat glyph images.
 
 I can turn this into a concrete data schema next — for example, a JSON format for glyph_tree, component_instances, virtual_boxes, stroke_layers, and ComfyUI I/O nodes.
 
@@ -317,11 +317,11 @@ Yes — animCJK is very likely the repo you were looking for.
 
 Why I think so:
 
-animCJK says its purpose is to display kanji, kana, hanja, and hanzi stroke by stroke, and each character is stored as one or more SVG files with path data and CSS animation. 
+animCJK says its purpose is to display kanji, kana, hanja, and hanzi stroke by stroke, and each character is stored as one or more SVG files with path data and CSS animation.
 
-animHanzi is the older hanzi-specific project, and its README explicitly points to the demo at gooo.free.fr/animHanzi/ and lists KanjiVG and HanziVG as related work. 
+animHanzi is the older hanzi-specific project, and its README explicitly points to the demo at gooo.free.fr/animHanzi/ and lists KanjiVG and HanziVG as related work.
 
-Make Me a Hanzi separately provides dictionary + graphics data for 9000+ common characters, including stroke-order vector graphics and an experimental tarball of animated SVGs. 
+Make Me a Hanzi separately provides dictionary + graphics data for 9000+ common characters, including stroke-order vector graphics and an experimental tarball of animated SVGs.
 
 So the rough lineage is:
 
@@ -462,7 +462,7 @@ z-order hint
     "edge_noise": 0.18
   }
 }
-This matches well with the kind of SVG-path stroke data exposed by animCJK and Make Me a Hanzi. 
+This matches well with the kind of SVG-path stroke data exposed by animCJK and Make Me a Hanzi.
 
 4. render_layers
 This is where your z-depth idea belongs.
@@ -596,7 +596,3 @@ StyleNode
 MaskNode
 
 and write one example end to end for a character like 語 or 漢.
-
-
-
-
