@@ -1,0 +1,194 @@
+name: plan-02-python-core
+description: >-
+  Execute Plan 02 (Python core: P3 decompose, P4 prototypes, P5 constraints).
+  Reads vault/plans/2026-04-21-02-python-core.md, iterates task-by-task through
+  its 11 tasks, runs pytest after each task commits, pauses for human approval,
+  then opens a PR against main. Worktree-isolated; one PR per run.
+provider: codex
+model: gpt-5.4
+interactive: true
+
+# Archon auto-creates an archon/task-plan-02-python-core-* worktree under
+# .worktrees/ per project convention D20. No override needed.
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Warm the Python venv in the worktree. Plan 01's venv lived in a now-
+  #    deleted worktree; the new worktree has no .venv. Idempotent: skips if
+  #    .venv already exists (e.g. on workflow resume).
+  # --------------------------------------------------------------------------
+  - id: setup-venv
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -x .venv/bin/pytest ]; then
+        python3 -m venv .venv
+        .venv/bin/pip install --upgrade pip
+        .venv/bin/pip install -e ".[dev]"
+      else
+        echo "venv already warm — skipping install"
+      fi
+      .venv/bin/pytest -q | tail -5
+
+  # --------------------------------------------------------------------------
+  # 2. Warm the MMH cache (~15 MB download). Gitignored, so not in the
+  #    worktree. Idempotent: fetch_mmh() is a no-op when files are present.
+  #    Also extracts cjk-decomp.txt from ref-projects/hanzi once.
+  # --------------------------------------------------------------------------
+  - id: warm-caches
+    depends_on: [setup-venv]
+    bash: |
+      set -e
+      cd project/py
+      .venv/bin/python -c "
+      from pathlib import Path
+      from olik_font.sources.makemeahanzi import fetch_mmh
+      from olik_font.sources.cjk_decomp import extract_from_hanzijs
+      fetch_mmh(Path('data/mmh'))
+      src = Path('../../../ref-projects/hanzi/lib/data/cjk-decomp.txt.js').resolve()
+      out = Path('data/cjk-decomp.txt')
+      if not out.exists():
+          extract_from_hanzijs(src, out)
+      print('caches warm')
+      "
+
+  # --------------------------------------------------------------------------
+  # 3. The implementation loop. Each iteration:
+  #    - starts with fresh Codex context (prevents drift across 11 tasks)
+  #    - reads git log to find the last completed task
+  #    - implements the next task end-to-end per the plan's step-by-step spec
+  #    - commits
+  #    - returns either NEXT (continue loop) or COMPLETE (exit loop)
+  #
+  #    `until: COMPLETE` matches Codex's final line. If Codex errors or times
+  #    out, Archon halts and the run can be resumed with `archon workflow
+  #    run plan-02-python-core --resume`.
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [warm-caches]
+    loop:
+      prompt: |
+        You are Codex, executing Plan 02 (Python core) task-by-task.
+
+        ## Context
+        The plan file is at `vault/plans/2026-04-21-02-python-core.md`. It has
+        11 tasks (Task 1 through Task 11). Each task is a `## Task N:` header
+        followed by a list of checkbox sub-steps. Each task ends with a commit
+        step whose message is spelled out in the plan.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's already committed on this
+           branch. Match commit messages to the plan's task-commit messages
+           (listed at the bottom of each task's Step). Determine the next task.
+           - If no task-specific commits yet, start at Task 1.
+           - If Task K was the last committed task, start Task K+1.
+           - If Task 11 is the last committed task, output **exactly** the
+             single word `COMPLETE` on its own line and exit. Do nothing else.
+        3. Implement every step of the next task **exactly** as written in the
+           plan — the code blocks are ground truth. Do not paraphrase code.
+        4. For TDD tasks: write the failing test first, run it and confirm it
+           fails, implement, run and confirm it passes. Do not skip the
+           failing-test check.
+        5. Run the verification/pytest command shown in the task. It must
+           pass. If it fails, debug and fix **within the scope of this task
+           only**. Do not modify files from prior tasks.
+        6. Run the commit command shown in the task, exactly as written.
+        7. Output **exactly** the single word `NEXT` on its own line.
+
+        ## Constraints
+
+        - Work inside the current worktree. Do not touch `~/.archon/`,
+          `~/.codex/`, or files outside the worktree.
+        - Never skip the fail-verification step for TDD tasks.
+        - Never use `git commit --amend` or `git rebase`. Always create a
+          fresh commit per task.
+        - `ref-projects/` is read-only. Never edit under it.
+        - If a task's expected test count differs from reality (e.g. plan
+          says "5 passed" but you see "4 passed"), treat that as a bug:
+          diagnose which test didn't write, don't paper over with a wrong
+          expectation.
+        - If you cannot proceed (plan ambiguity, environment issue), output
+          `BLOCKED: <one-line reason>` and stop. Do not output NEXT.
+
+        ## Output format
+
+        Your last line MUST be exactly one of:
+        - `NEXT`
+        - `COMPLETE`
+        - `BLOCKED: <reason>`
+
+        Print nothing after that line.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 15
+      idle_timeout: 1200000  # 20 minutes per task
+
+  # --------------------------------------------------------------------------
+  # 4. Full-suite regression. Plan 02 brings the test count to ~40.
+  # --------------------------------------------------------------------------
+  - id: run-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py
+      .venv/bin/pytest -v 2>&1 | tail -20
+      echo "---"
+      total=$(.venv/bin/pytest --collect-only -q 2>&1 | tail -1)
+      echo "total tests: $total"
+
+  # --------------------------------------------------------------------------
+  # 5. Summary + human approval gate. Shows commits + test count, waits for
+  #    APPROVED before opening the PR.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run-tests]
+    loop:
+      prompt: |
+        Plan 02 implementation is complete. Present a summary to the
+        reviewer:
+
+        1. Run `git log --oneline main..HEAD` and list the commits.
+        2. Run `git diff main..HEAD --stat` and include the top-level
+           stat summary.
+        3. Report the total test count from the previous `run-tests` node
+           (it was `$run-tests.output` — extract the last line).
+        4. Note any deviations from the plan that you (or prior iterations)
+           discovered — these are candidates for an "Adjustments after
+           execution" entry in the plan.
+
+        After presenting, stop and wait for the reviewer to respond.
+        If they request fixes, address them in new commits, then
+        re-present the updated summary. If they type `APPROVED`, exit.
+      gate_message: |
+        Plan 02 is implemented and tests pass. Review the summary above.
+        Reply with `APPROVED` to open the PR, or describe specific fixes
+        you want applied first.
+      until: APPROVED
+      interactive: true
+      max_iterations: 20
+      idle_timeout: 0  # no timeout; human-paced
+
+  # --------------------------------------------------------------------------
+  # 6. Open the PR. No force-push, no rebasing (per D21).
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 02: Python core (P3 decompose, P4 prototypes, P5 constraints)`
+
+      Body:
+        - 1-line summary of what Plan 02 delivers.
+        - Commit list (from `git log --oneline main..HEAD`).
+        - Test count (from earlier run-tests output).
+        - "Spec: [[2026-04-21-glyph-scene-graph-solution-design]], Plan:
+          [[2026-04-21-02-python-core]]".
+        - Any "Adjustments after execution" findings discovered during the
+          run, matching the pattern Plan 01 established.
+
+      After the PR URL is printed, output it on the final line and stop.
+    idle_timeout: 300000

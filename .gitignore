@@ -26,3 +26,7 @@ project/ts/**/dist/
 project/ts/**/.turbo/
 project/ts/**/.next/
 project/py/.venv/
+
+# Archon runtime state (workflows under .archon/workflows/ ARE committed)
+.archon/state/
+.archon/.log/
