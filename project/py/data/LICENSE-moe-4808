@@ -1,0 +1,10 @@
+# MoE 4808 common-use character list
+
+Source: https://github.com/Watermelonnn/ChineseUsefulToolKit
+File:   教育部常用字4808字.txt (master branch)
+
+This list enumerates Taiwan's Ministry of Education 常用國字標準字體表
+(4808 characters). The upstream repository does not declare an explicit
+license; the list itself is a public dataset published by the MoE.
+
+Retrieved: 2026-04-21 (via scripts/data-regen.sh at implementation time)

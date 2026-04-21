@@ -21,6 +21,9 @@ project/py/data/*
 # license note — regenerate via `task data:regen-cjk-decomp`.
 !project/py/data/cjk-decomp.json
 !project/py/data/LICENSE-cjk-decomp
+# MoE 4808 常用字 char list (public dataset from Watermelonnn/ChineseUsefulToolKit).
+!project/py/data/moe_4808.txt
+!project/py/data/LICENSE-moe-4808
 project/py/.pytest_cache/
 project/py/**/__pycache__/
 project/py/src/*.egg-info/
