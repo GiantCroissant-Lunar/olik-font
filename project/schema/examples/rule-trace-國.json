@@ -1,0 +1,45 @@
+{
+  "decisions": [
+    {
+      "decision_id": "d:國:decomposition",
+      "rule_id": "decomp.use_extraction_plan",
+      "inputs": {
+        "char_in_extraction_plan": true
+      },
+      "output": {
+        "source": "extraction_plan",
+        "delegate": true
+      },
+      "alternatives": [
+        {
+          "rule_id": "decomp.default_keep",
+          "would_output": {
+            "mode": "keep",
+            "depth": 0
+          }
+        }
+      ],
+      "applied_at": "2026-04-21T07:06:18.278033+00:00"
+    },
+    {
+      "decision_id": "d:國:composition",
+      "rule_id": "compose.preset_from_plan",
+      "inputs": {
+        "has_preset_in_plan": true,
+        "preset": "enclose"
+      },
+      "output": {
+        "adapter": "preset"
+      },
+      "alternatives": [
+        {
+          "rule_id": "compose.default_identity",
+          "would_output": {
+            "adapter": "identity"
+          }
+        }
+      ],
+      "applied_at": "2026-04-21T07:06:18.278037+00:00"
+    }
+  ]
+}

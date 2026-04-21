@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.1",
+  "decomposition": [
+    {
+      "id": "decomp.use_extraction_plan",
+      "when": {
+        "char_in_extraction_plan": true
+      },
+      "action": {
+        "source": "extraction_plan",
+        "delegate": true
+      }
+    },
+    {
+      "id": "decomp.default_keep",
+      "when": {},
+      "action": {
+        "mode": "keep",
+        "depth": 0
+      }
+    }
+  ],
+  "composition": [
+    {
+      "id": "compose.preset_from_plan",
+      "when": {
+        "has_preset_in_plan": true
+      },
+      "action": {
+        "adapter": "preset"
+      }
+    },
+    {
+      "id": "compose.direct_for_repeat_triangle",
+      "when": {
+        "preset": "repeat_triangle"
+      },
+      "action": {
+        "adapter": "direct"
+      }
+    },
+    {
+      "id": "compose.default_identity",
+      "when": {},
+      "action": {
+        "adapter": "identity"
+      }
+    }
+  ],
+  "prototype_extraction": [
+    {
+      "id": "proto.use_extraction_plan_indices",
+      "when": {
+        "char_in_extraction_plan": true
+      },
+      "action": {
+        "source": "extraction_plan",
+        "carve": "by_stroke_indices"
+      }
+    },
+    {
+      "id": "proto.fallback_mmh_matches",
+      "when": {},
+      "action": {
+        "source": "mmh_matches_field"
+      }
+    }
+  ]
+}
