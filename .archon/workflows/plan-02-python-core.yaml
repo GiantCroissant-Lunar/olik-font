@@ -31,9 +31,10 @@ nodes:
       .venv/bin/pytest -q | tail -5
 
   # --------------------------------------------------------------------------
-  # 2. Warm the MMH cache (~15 MB download). Gitignored, so not in the
-  #    worktree. Idempotent: fetch_mmh() is a no-op when files are present.
-  #    Also extracts cjk-decomp.txt from ref-projects/hanzi once.
+  # 2. Warm both caches (~15 MB MMH + ~1.4 MB cjk-decomp). Both fetchers
+  #    are idempotent: a no-op when files are present. Uses GitHub-side
+  #    downloads — no dependency on a local ref-projects/ clone, which
+  #    Archon's worktree at ~/.archon/worktrees/... wouldn't carry anyway.
   # --------------------------------------------------------------------------
   - id: warm-caches
     depends_on: [setup-venv]
@@ -43,12 +44,9 @@ nodes:
       .venv/bin/python -c "
       from pathlib import Path
       from olik_font.sources.makemeahanzi import fetch_mmh
-      from olik_font.sources.cjk_decomp import extract_from_hanzijs
+      from olik_font.sources.cjk_decomp import fetch_cjk_decomp
       fetch_mmh(Path('data/mmh'))
-      src = Path('../../../ref-projects/hanzi/lib/data/cjk-decomp.txt.js').resolve()
-      out = Path('data/cjk-decomp.txt')
-      if not out.exists():
-          extract_from_hanzijs(src, out)
+      fetch_cjk_decomp(Path('data'))
       print('caches warm')
       "
 
