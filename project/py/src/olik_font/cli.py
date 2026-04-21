@@ -76,6 +76,23 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     ext_back.add_argument("--iou-gate", type=float, default=0.90)
 
+    ext_list = ext_sub.add_parser("list", help="print chars in a status bucket")
+    ext_list.add_argument(
+        "--status",
+        required=True,
+        choices=["verified", "needs_review", "unsupported_op", "failed_extraction"],
+    )
+    ext_list.add_argument("--limit", type=int, default=50)
+
+    ext_retry = ext_sub.add_parser("retry", help="re-extract chars in a status bucket")
+    ext_retry.add_argument(
+        "--status",
+        required=True,
+        choices=["unsupported_op", "needs_review", "failed_extraction"],
+    )
+    ext_retry.add_argument("--iou-gate", type=float, default=0.90)
+    ext_retry.add_argument("--max-variants-per-proto", type=int, default=2)
+
     return parser.parse_args(argv)
 
 
@@ -397,14 +414,72 @@ def _cmd_extract_backfill(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_extract_list(_args: argparse.Namespace) -> int:
-    print("extract list is not wired yet", file=sys.stderr)
-    return 2
+def _cmd_extract_list(args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    rows = _query_rows(
+        db.query(
+            "SELECT char, iou_mean, missing_op, extraction_error "
+            "FROM glyph WHERE status = $s ORDER BY char LIMIT $n;",
+            {"s": args.status, "n": args.limit},
+        )
+    )
+    for row in rows:
+        extra = ""
+        if args.status == "unsupported_op" and row.get("missing_op"):
+            extra = f"  ({row['missing_op']})"
+        elif args.status == "failed_extraction" and row.get("extraction_error"):
+            extra = f"  ({row['extraction_error']})"
+        elif args.status == "needs_review" and row.get("iou_mean") is not None:
+            extra = f"  (iou={row['iou_mean']:.3f})"
+        print(f"{row['char']}{extra}")
+    return 0
 
 
-def _cmd_extract_retry(_args: argparse.Namespace) -> int:
-    print("extract retry is not wired yet", file=sys.stderr)
-    return 2
+def _cmd_extract_retry(args: argparse.Namespace) -> int:
+    import olik_font.bulk.batch as batch_mod
+    from olik_font.bulk import charlist as cl
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    rows = _query_rows(
+        db.query(
+            "SELECT char FROM glyph WHERE status = $s;",
+            {"s": args.status},
+        )
+    )
+    chars = [row["char"] for row in rows]
+    if not chars:
+        print(f"no chars with status = {args.status}")
+        return 0
+    for ch in chars:
+        db.query("DELETE FROM glyph WHERE char = $c;", {"c": ch})
+
+    orig_pool = cl.load_moe_4808
+    orig_batch_pool = batch_mod.load_moe_4808
+    cl.load_moe_4808 = lambda path=None: chars
+    batch_mod.load_moe_4808 = lambda path=None: chars
+    try:
+        report = batch_mod.run_batch(
+            db=db,
+            count=len(chars),
+            seed=0,
+            iou_gate=args.iou_gate,
+            cap=args.max_variants_per_proto,
+        )
+    finally:
+        cl.load_moe_4808 = orig_pool
+        batch_mod.load_moe_4808 = orig_batch_pool
+
+    print(f"retried {report.selected} chars")
+    for status, count in report.counts.items():
+        print(f"  {status.value:20s} {count}")
+    return 0
 
 
 def _query_rows(payload: object) -> list[dict[str, Any]]:

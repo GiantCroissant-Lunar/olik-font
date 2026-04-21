@@ -67,3 +67,38 @@ def test_extract_backfill_marks_seed_glyph_verified(
     assert rc == 0
     row = _rows(db.query("SELECT status FROM glyph WHERE char = '明';"))[0]
     assert row["status"] == "verified"
+
+
+def test_extract_list_prints_chars(
+    surreal_ephemeral: DbConfig, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    _set_env(monkeypatch, surreal_ephemeral)
+    monkeypatch.setattr("sys.argv", ["olik", "extract", "auto", "--count", "5", "--seed", "0"])
+    main()
+    monkeypatch.setattr("sys.argv", ["olik", "extract", "list", "--status", "needs_review"])
+    rc = main()
+    assert rc == 0
+    _ = capsys.readouterr().out
+    # output is one-char-per-line; may be empty if all 5 chose verified,
+    # which is fine — we only assert the command exits 0.
+
+
+def test_extract_retry_updates_status(
+    surreal_ephemeral: DbConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _set_env(monkeypatch, surreal_ephemeral)
+    db = connect(surreal_ephemeral)
+    from olik_font.sink.schema import ensure_schema
+
+    ensure_schema(db)
+    db.query(
+        "UPDATE type::record('glyph', '明') MERGE "
+        "{ char: '明', status: 'unsupported_op', missing_op: 'wb' };"
+    )
+    monkeypatch.setattr("sys.argv", ["olik", "extract", "retry", "--status", "unsupported_op"])
+    rc = main()
+    assert rc == 0
+    row = _rows(db.query("SELECT status, missing_op FROM glyph WHERE char = '明';"))[0]
+    # After retry, 明 should either be verified / needs_review (op 'a' is supported)
+    assert row["status"] in {"verified", "needs_review"}
+    assert row.get("missing_op") in (None, "")
