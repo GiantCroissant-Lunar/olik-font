@@ -25,3 +25,4 @@ project/ts/**/node_modules/
 project/ts/**/dist/
 project/ts/**/.turbo/
 project/ts/**/.next/
+project/py/.venv/
