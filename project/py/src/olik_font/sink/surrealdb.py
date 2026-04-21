@@ -132,7 +132,7 @@ def upsert_glyph_stub(
     if extraction_run is not None:
         body["extraction_run"] = extraction_run
     db.query(
-        "UPDATE type::thing('glyph', $char) MERGE $data;",
+        "UPSERT type::record('glyph', $char) MERGE $data;",
         {"char": char, "data": body},
     )
 
@@ -150,14 +150,14 @@ def upsert_variant_of_edge(
     """
     existing = db.query(
         "SELECT id FROM variant_of "
-        "WHERE in = type::thing('prototype', $v) "
-        "  AND out = type::thing('prototype', $c) LIMIT 1;",
+        "WHERE in = type::record('prototype', $v) "
+        "  AND out = type::record('prototype', $c) LIMIT 1;",
         {"v": variant_id, "c": canonical_id},
     )[0]["result"]
     if existing:
         return
     db.query(
-        "RELATE type::thing('prototype', $v)->variant_of"
-        "->type::thing('prototype', $c) CONTENT { reason: $r };",
+        "RELATE type::record('prototype', $v)->variant_of"
+        "->type::record('prototype', $c) CONTENT { reason: $r };",
         {"v": variant_id, "c": canonical_id, "r": reason},
     )

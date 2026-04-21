@@ -1843,3 +1843,5 @@ git tag -a plan-09-bulk-extraction \
 ## Adjustments after execution
 
 _Notes on LUT surprises (unexpected op frequencies), prototype-id slug collisions, MMH stroke-count mismatches, or test-harness flakiness found during implementation._
+
+- SurrealDB 3.0.4 in this environment rejects `type::thing(...)`; Task 6 used `type::record(...)` in sink/test queries instead.
