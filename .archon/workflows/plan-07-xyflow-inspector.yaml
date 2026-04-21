@@ -1,0 +1,238 @@
+name: plan-07-xyflow-inspector
+description: >-
+  Execute Plan 07 (xyflow Inspector). Ships two packages (@olik/flow-nodes,
+  @olik/rule-viz) and one app (@olik/inspector) — a Vite + React SPA with
+  four xyflow-powered views: Decomposition Explorer, Prototype Library
+  Browser, Rule Browser, Placement Debugger. Depends on Plans 04 (schema +
+  loader) and 05 (glyph-viz primitives), both merged on main.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. pnpm install.
+  # --------------------------------------------------------------------------
+  - id: setup-ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -10
+
+  # --------------------------------------------------------------------------
+  # 2. Prebuild Plan 04 + 05 packages. flow-nodes and rule-viz import from
+  #    @olik/glyph-schema and @olik/glyph-viz; their package.json exports
+  #    point at dist/ so resolution requires those builds to exist first.
+  # --------------------------------------------------------------------------
+  - id: prebuild-deps
+    depends_on: [setup-ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" build 2>&1 | tail -20
+      for pkg in glyph-schema glyph-loader glyph-viz; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING packages/$pkg/dist/index.js"; exit 1)
+        test -f "packages/$pkg/dist/index.d.ts" || (echo "MISSING packages/$pkg/dist/index.d.ts"; exit 1)
+      done
+      echo "All 3 dependency packages built."
+
+  # --------------------------------------------------------------------------
+  # 3. Verify Plan 03 fixtures — inspector's RuleBrowser reads rules.json;
+  #    real records drive the Decomposition Explorer + Placement Debugger
+  #    integration smoke test.
+  # --------------------------------------------------------------------------
+  - id: verify-fixtures
+    depends_on: [prebuild-deps]
+    bash: |
+      set -e
+      missing=0
+      for f in prototype-library.json rules.json \
+               glyph-record-明.json glyph-record-清.json \
+               glyph-record-國.json glyph-record-森.json \
+               rule-trace-明.json rule-trace-清.json \
+               rule-trace-國.json rule-trace-森.json; do
+        if [ ! -f "project/schema/examples/$f" ]; then
+          echo "MISSING: project/schema/examples/$f"
+          missing=$((missing+1))
+        fi
+      done
+      if [ $missing -gt 0 ]; then
+        echo "FATAL: $missing Plan 03 fixture(s) missing."
+        echo "Regenerate: cd project/py && .venv/bin/olik build 明 清 國 森 -o ../schema/examples"
+        exit 1
+      fi
+      echo "All 10 Plan 03 fixtures present."
+
+  # --------------------------------------------------------------------------
+  # 4. Implementation loop. Plan 07 has 8 tasks (scaffold flow-nodes, impl
+  #    nodes, rule-viz package, inspector scaffold, state/TopNav/CharPicker,
+  #    four views, integration test, final build + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify-fixtures]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 07 (xyflow Inspector) task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-07-xyflow-inspector.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit whose
+        message is spelled out in the plan.
+
+        Plans 01–05 are merged on main. In particular:
+          - `@olik/glyph-schema`, `@olik/glyph-loader`, `@olik/glyph-viz`
+            are all built (dist/ populated at workflow start via
+            prebuild-deps). Flow-nodes Task 2 imports StrokePath,
+            ModeIndicator, InputAdapterChip from @olik/glyph-viz — these
+            exist and are typed.
+          - `project/schema/examples/rules.json` exists (Plan 03 already
+            emits it; see the plan-03 workflow's "Plan 07 amendment"
+            section). Do NOT re-implement the rules.json emitter in this
+            plan — the plan's Task 6.3 mentions it as a "tiny Plan 03
+            amendment" but Plan 03's CLI already emits it. If you find
+            yourself adding code to `project/py/src/olik_font/cli.py`,
+            stop and verify — it's probably already there.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 07, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 8 is the last committed task (plan-07-inspector +
+             pass-1-complete tags applied), output **exactly** the single
+             word `COMPLETE` on its own line and exit.
+        4. Implement every step exactly as written in the plan. Follow
+           TDD: failing test first → verify it fails → implement → verify
+           it passes.
+        5. Run the verification command shown in the task (pnpm typecheck,
+           pnpm test, pnpm build, pnpm dev for a manual-check step).
+           For Task 5 Step 6 and Task 6 Step 6 which say "run pnpm dev
+           and visit http://localhost:5173": substitute `pnpm build` —
+           the workflow has no interactive browser session, but a
+           successful production build proves the app compiles end-to-end.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 8's tags)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - If tsup DTS generation fails with a `composite` error on a
+          new package (flow-nodes or rule-viz), add a package-local
+          `"composite": false` to that package's tsconfig.json — same
+          fix as Plans 04 and 05.
+        - For the inspector app's tests (Task 7), mock @olik/glyph-loader
+          per the plan — no HTTP in unit tests.
+        - The `pass-1-complete` tag in Task 8 Step 3 marks the end of the
+          seven-plan sequence. Apply it only after the plan-07-inspector
+          tag from Step 2.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 12
+      idle_timeout: 1800000  # 30 min per task
+
+  # --------------------------------------------------------------------------
+  # 5. Workspace-wide test run.
+  # --------------------------------------------------------------------------
+  - id: run-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/ts && pnpm -r test 2>&1 | tail -60
+
+  # --------------------------------------------------------------------------
+  # 6. Workspace-wide build — proves inspector app produces dist/.
+  # --------------------------------------------------------------------------
+  - id: run-build
+    depends_on: [run-tests]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r build 2>&1 | tail -30
+      echo ""
+      echo "### Build artifacts"
+      for pkg in glyph-schema glyph-loader glyph-viz flow-nodes rule-viz; do
+        if [ -d "packages/$pkg/dist" ]; then
+          echo "  packages/$pkg/dist/:"
+          ls -la "packages/$pkg/dist/" 2>/dev/null | awk 'NR>1 {print "    "$9" ("$5" bytes)"}'
+        fi
+      done
+      if [ -d "apps/inspector/dist" ]; then
+        echo "  apps/inspector/dist/:"
+        ls -la "apps/inspector/dist/" 2>/dev/null | awk 'NR>1 {print "    "$9" ("$5" bytes)"}'
+      fi
+
+  # --------------------------------------------------------------------------
+  # 7. Auto-approve on tests green + all dist/ dirs populated.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run-build]
+    bash: |
+      set -e
+      echo "## Plan 07 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Final test tail"
+      echo "$run-tests.output" | tail -10
+      echo ""
+
+      tests_ok=0
+      build_ok=0
+
+      if echo "$run-tests.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        tests_ok=1
+      fi
+      if [ -f project/ts/packages/flow-nodes/dist/index.js ] && \
+         [ -f project/ts/packages/rule-viz/dist/index.js ] && \
+         [ -d project/ts/apps/inspector/dist ]; then
+        build_ok=1
+      fi
+
+      if [ $tests_ok -eq 1 ] && [ $build_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED (tests green, 2 packages + 1 app built)"
+      else
+        echo "VERDICT: REJECTED (tests_ok=$tests_ok build_ok=$build_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 8. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 07: xyflow Inspector — @olik/flow-nodes + @olik/rule-viz + @olik/inspector`
+
+      Body:
+        - 1-line summary of what ships: two packages of xyflow node types
+          plus a four-view Vite + React SPA (Decomposition Explorer,
+          Prototype Library Browser, Rule Browser with trace overlay,
+          Placement Debugger).
+        - Commit list: `git log --oneline main..HEAD`.
+        - Final test count (per-package + app breakdown if easy).
+        - Marks pass-1 complete — all 7 plans in the seed sequence have
+          shipped.
+        - Links: spec, Plan 07 doc
+          (vault/plans/2026-04-21-07-xyflow-inspector.md), Plans 04/05
+          predecessors.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
