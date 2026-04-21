@@ -1,6 +1,7 @@
 .vscode/
 
-ref-projects/
+# Root-only — we don't want this to match .agent/skills/04-tooling/ref-projects/
+/ref-projects/
 
 .env
 
