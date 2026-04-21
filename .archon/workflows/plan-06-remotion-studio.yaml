@@ -1,0 +1,294 @@
+name: plan-06-remotion-studio
+description: >-
+  Execute Plan 06 (Remotion Studio). Ships `@olik/remotion-studio` — a
+  Remotion 4 app with five compositions (CharacterAnim, DecompositionTree,
+  PrototypeGraph, LayerZDepth, VirtualCoord) plus a Storyboard meta-comp,
+  rendering validated JSON records from Plan 03 into animated scenes via
+  primitives from Plan 05. Depends on Plans 04 (schema + loader) and 05
+  (glyph-viz), both merged on main.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. pnpm install.
+  # --------------------------------------------------------------------------
+  - id: setup-ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -10
+
+  # --------------------------------------------------------------------------
+  # 2. Prebuild Plan 04 + 05 packages. The remotion-studio app imports
+  #    GlyphBundle + loadBundleFs from @olik/glyph-loader and primitives
+  #    from @olik/glyph-viz; their package.json exports point at dist/ so
+  #    resolution requires those builds to exist first.
+  # --------------------------------------------------------------------------
+  - id: prebuild-deps
+    depends_on: [setup-ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" build 2>&1 | tail -20
+      for pkg in glyph-schema glyph-loader glyph-viz; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING packages/$pkg/dist/index.js"; exit 1)
+        test -f "packages/$pkg/dist/index.d.ts" || (echo "MISSING packages/$pkg/dist/index.d.ts"; exit 1)
+      done
+      echo "All 3 dependency packages built."
+
+  # --------------------------------------------------------------------------
+  # 3. Verify Plan 03 fixtures — load-records.ts reads them and the
+  #    compositions render them. Missing fixtures are tolerated at runtime
+  #    (tests use test.runIf, comps render blank) but for a real demo run
+  #    we want them present.
+  # --------------------------------------------------------------------------
+  - id: verify-fixtures
+    depends_on: [prebuild-deps]
+    bash: |
+      set -e
+      missing=0
+      for f in prototype-library.json \
+               glyph-record-明.json glyph-record-清.json \
+               glyph-record-國.json glyph-record-森.json; do
+        if [ ! -f "project/schema/examples/$f" ]; then
+          echo "MISSING: project/schema/examples/$f"
+          missing=$((missing+1))
+        fi
+      done
+      if [ $missing -gt 0 ]; then
+        echo "FATAL: $missing Plan 03 fixture(s) missing."
+        echo "Regenerate: cd project/py && .venv/bin/olik build 明 清 國 森 -o ../schema/examples"
+        exit 1
+      fi
+      echo "All 5 required Plan 03 fixtures present."
+
+  # --------------------------------------------------------------------------
+  # 4. Implementation loop. Plan 06 has 9 tasks (scaffold, load-records,
+  #    timing, CharacterAnim, DecompositionTree, PrototypeGraph, LayerZDepth
+  #    + VirtualCoord, Storyboard, final verify + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify-fixtures]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 06 (Remotion Studio) task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-06-remotion-studio.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit whose
+        message is spelled out in the plan.
+
+        Plans 01–05 and 07 are merged on main. In particular:
+          - `@olik/glyph-schema`, `@olik/glyph-loader`, `@olik/glyph-viz`
+            are all built (dist/ populated at workflow start via
+            prebuild-deps). Compositions import `StrokePath`,
+            `VirtualCoordGrid`, `IoUBadge`, `TreeLayout`, `ModeIndicator`,
+            `InputAdapterChip`, `GraphLayout`, `LayerStack`,
+            `BBoxOverlay`, `AnchorMarker`, `AnchorBindingArrow` from
+            `@olik/glyph-viz` — these exist and are typed.
+          - `project/schema/examples/` has all 4 seed records +
+            prototype-library.json (verified by verify-fixtures).
+          - The app package `@olik/inspector` (Plan 07) already exists as
+            a sibling under `project/ts/apps/`; `@olik/remotion-studio` is
+            a new sibling you are scaffolding.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 06, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 9 Step 3 is done (plan-06-remotion-studio tag
+             applied), output **exactly** the single word `COMPLETE`
+             on its own line and exit.
+        4. Implement every step exactly as written in the plan. Follow
+           TDD: failing test first → verify it fails → implement → verify
+           it passes.
+        5. Run the verification command shown in the task (pnpm typecheck,
+           pnpm test). For steps that say "pnpm studio" (Task 4 Step 3,
+           Task 5 Step 3, Task 8 Step 3): substitute `pnpm typecheck`
+           — the workflow has no interactive browser session, but a
+           successful typecheck proves the composition compiles and its
+           props match the `@olik/glyph-viz` primitives' exported types.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 9 Step 3's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - **Skip Task 9 Step 2** (the optional `pnpm build` MP4 render).
+          The app's `build` script invokes `remotion render …` which
+          requires ffmpeg + a Chromium binary the workflow runner may
+          not have. The plan explicitly labels Step 2 optional; treat it
+          as skipped and proceed straight to Step 3 (the tag). Do not
+          commit an `out/storyboard.mp4` file.
+        - Task 9 Step 1 (`pnpm -r typecheck && pnpm -r test`) MUST pass
+          before applying the tag.
+        - If tsup or tsc DTS emission complains about `composite`, add a
+          package-local `"composite": false` to the offending tsconfig
+          — same fix as Plans 04, 05, 07.
+        - If `pnpm -r test` in a sibling package tries to rebuild Plan 04
+          or 05 packages and fails, prefer invoking
+          `pnpm --filter "@olik/remotion-studio" test` for this plan's
+          own scope; workspace-wide `pnpm -r test` is run separately in
+          the run-tests node after this loop.
+        - Never run `remotion render` or `remotion studio` — they spawn
+          long-lived processes that will stall the loop.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 14
+      idle_timeout: 1800000  # 30 min per task
+
+  # --------------------------------------------------------------------------
+  # 5. Workspace-wide test run (includes remotion-studio's timing +
+  #    load-records tests).
+  # --------------------------------------------------------------------------
+  - id: run-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/ts && pnpm -r test 2>&1 | tail -60
+
+  # --------------------------------------------------------------------------
+  # 6. Workspace-wide typecheck — proves the Remotion app's compositions
+  #    compile against glyph-viz + glyph-loader types. We do NOT run
+  #    `pnpm -r build` because remotion-studio's build script renders an
+  #    MP4 via ffmpeg, which is out of scope for this workflow.
+  # --------------------------------------------------------------------------
+  - id: run-typecheck
+    depends_on: [run-tests]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -40
+
+  # --------------------------------------------------------------------------
+  # 7. Workspace-wide build — exclude the remotion-studio app. Other
+  #    packages still produce dist/ so we confirm no regression from
+  #    adding the new app.
+  # --------------------------------------------------------------------------
+  - id: run-build
+    depends_on: [run-typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -30
+      echo ""
+      echo "### Build artifacts (packages only)"
+      for pkg in glyph-schema glyph-loader glyph-viz flow-nodes rule-viz; do
+        if [ -d "packages/$pkg/dist" ]; then
+          echo "  packages/$pkg/dist/:"
+          ls -la "packages/$pkg/dist/" 2>/dev/null | awk 'NR>1 {print "    "$9" ("$5" bytes)"}'
+        fi
+      done
+      echo ""
+      echo "### Remotion app source sanity"
+      test -f apps/remotion-studio/src/Root.tsx && echo "  Root.tsx ✓"
+      test -f apps/remotion-studio/src/load-records.ts && echo "  load-records.ts ✓"
+      test -f apps/remotion-studio/src/timing.ts && echo "  timing.ts ✓"
+      for c in CharacterAnim DecompositionTree PrototypeGraph LayerZDepth VirtualCoord Storyboard; do
+        test -f "apps/remotion-studio/src/compositions/$c.tsx" && echo "  compositions/$c.tsx ✓"
+      done
+
+  # --------------------------------------------------------------------------
+  # 8. Auto-approve on tests green + typecheck green + all 6 composition
+  #    files present + plan-06 tag applied.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run-build]
+    bash: |
+      set -e
+      echo "## Plan 06 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-06-remotion-studio"
+      echo ""
+      echo "### Final test tail"
+      echo "$run-tests.output" | tail -10
+      echo ""
+
+      tests_ok=0
+      typecheck_ok=0
+      files_ok=0
+      tag_ok=0
+
+      if echo "$run-tests.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        tests_ok=1
+      fi
+      if echo "$run-typecheck.output" | grep -qiE 'error'; then
+        typecheck_ok=0
+      else
+        typecheck_ok=1
+      fi
+
+      all_comps=1
+      for c in CharacterAnim DecompositionTree PrototypeGraph LayerZDepth VirtualCoord Storyboard; do
+        if [ ! -f "project/ts/apps/remotion-studio/src/compositions/$c.tsx" ]; then
+          all_comps=0
+        fi
+      done
+      if [ $all_comps -eq 1 ] && \
+         [ -f project/ts/apps/remotion-studio/src/Root.tsx ] && \
+         [ -f project/ts/apps/remotion-studio/src/load-records.ts ] && \
+         [ -f project/ts/apps/remotion-studio/src/timing.ts ]; then
+        files_ok=1
+      fi
+
+      if git tag -l "plan-06-remotion-studio" | grep -q "plan-06-remotion-studio"; then
+        tag_ok=1
+      fi
+
+      if [ $tests_ok -eq 1 ] && [ $typecheck_ok -eq 1 ] && \
+         [ $files_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED (tests green, typecheck green, 6 compositions + 3 support files present, tag applied)"
+      else
+        echo "VERDICT: REJECTED (tests_ok=$tests_ok typecheck_ok=$typecheck_ok files_ok=$files_ok tag_ok=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 9. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 06: Remotion Studio — @olik/remotion-studio`
+
+      Body:
+        - 1-line summary: Remotion 4 app with 5 compositions
+          (CharacterAnim, DecompositionTree, PrototypeGraph, LayerZDepth,
+          VirtualCoord) plus a Storyboard meta-composition, rendering
+          validated glyph records into animated scenes.
+        - Commit list: `git log --oneline main..HEAD`.
+        - Final test count (per-package + app breakdown if easy).
+        - Tag: `plan-06-remotion-studio`.
+        - Note: Task 9 Step 2's optional MP4 render was SKIPPED in the
+          workflow (no ffmpeg/chromium runner). Reviewers can render
+          locally with `pnpm --filter @olik/remotion-studio build`.
+        - Links: spec, Plan 06 doc
+          (vault/plans/2026-04-21-06-remotion-studio.md), Plans 04/05
+          predecessors.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
