@@ -6,3 +6,4 @@ export * from "./bbox-overlay.js";
 export * from "./anchor-marker.js";
 export * from "./anchor-binding-arrow.js";
 export * from "./tree-layout.js";
+export * from "./graph-layout.js";
