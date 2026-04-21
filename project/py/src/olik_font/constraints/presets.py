@@ -104,3 +104,46 @@ def apply_enclose(
         AlignY(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
     )
     return outer_out, inner_out, constraints
+
+
+from olik_font.constraints.primitives import AvoidOverlap, Repeat  # noqa: E402
+
+
+def apply_repeat_triangle(
+    instances: tuple[InstancePlacement, InstancePlacement, InstancePlacement],
+    glyph_bbox: BBox,
+    scale: float = 0.5,
+    avoid_padding: float = 8.0,
+) -> tuple[tuple[InstancePlacement, InstancePlacement, InstancePlacement], tuple[Primitive, ...]]:
+    if len(instances) != 3:
+        raise ValueError(f"repeat_triangle requires 3 instances, got {len(instances)}")
+
+    gx0, gy0, gx1, gy1 = glyph_bbox
+    w = gx1 - gx0
+    h = gy1 - gy0
+    cell_w = w * scale
+    cell_h = h * scale
+
+    # top-center, bottom-left, bottom-right
+    positions: list[BBox] = [
+        (gx0 + (w - cell_w) / 2.0, gy0, gx0 + (w + cell_w) / 2.0, gy0 + cell_h),
+        (gx0, gy1 - cell_h, gx0 + cell_w, gy1),
+        (gx1 - cell_w, gy1 - cell_h, gx1, gy1),
+    ]
+
+    resolved: list[InstancePlacement] = []
+    for inst, bbox in zip(instances, positions, strict=False):
+        resolved.append(replace(inst, transform=bbox_to_bbox_affine(CANONICAL, bbox)))
+
+    constraints: list[Primitive] = [
+        Repeat(prototype_ref=instances[0].prototype_ref, count=3, layout_hint="triangle"),
+    ]
+    for i in range(3):
+        for j in range(i + 1, 3):
+            constraints.append(
+                AvoidOverlap(
+                    a=instances[i].instance_id, b=instances[j].instance_id, padding=avoid_padding
+                )
+            )
+
+    return tuple(resolved), tuple(constraints)  # type: ignore[return-value]
