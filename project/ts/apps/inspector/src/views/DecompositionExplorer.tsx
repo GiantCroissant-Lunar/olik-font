@@ -14,6 +14,10 @@ export const DecompositionExplorer: React.FC = () => {
     return <div style={{ padding: 24 }}>no record for {state.char}</div>;
   }
 
+  if (!record.layout_tree) {
+    return <div style={{ padding: 24 }}>no layout tree for {state.char}</div>;
+  }
+
   const { nodes, edges } = layoutTreeToFlow(record.layout_tree, record.glyph_id);
 
   return (
