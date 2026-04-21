@@ -5,6 +5,7 @@ import { CharacterAnim, type CharacterAnimProps } from "./compositions/Character
 import { DecompositionTree, type DecompositionTreeProps } from "./compositions/DecompositionTree.js";
 import { LayerZDepth, type LayerZDepthProps } from "./compositions/LayerZDepth.js";
 import { PrototypeGraph, type PrototypeGraphProps } from "./compositions/PrototypeGraph.js";
+import { Storyboard, type StoryboardProps } from "./compositions/Storyboard.js";
 import { VirtualCoord, type VirtualCoordProps } from "./compositions/VirtualCoord.js";
 import { loadSeedBundle, SEED_CHARS } from "./load-records.js";
 import { totalStrokeFrames } from "./timing.js";
@@ -100,6 +101,20 @@ export const RemotionRoot: React.FC = () => {
           />
         </React.Fragment>
       ))}
+      <Composition<any, StoryboardProps>
+        id="Storyboard"
+        component={Storyboard}
+        durationInFrames={(SEED_CHARS.length * 4 + 1) * 90}
+        fps={30}
+        width={1280}
+        height={720}
+        defaultProps={{
+          bundle,
+          chars: SEED_CHARS,
+          framesPerStroke: FRAMES_PER_STROKE,
+          sceneFrames: 90,
+        }}
+      />
     </>
   );
 };
