@@ -1,0 +1,63 @@
+name: codex-review-worktree
+description: >-
+  One-shot Codex review of a worktree's diff against main. Runs Codex's
+  non-interactive `exec` mode inside a bash: node (not as Archon's AI-node)
+  so this workflow stays fully deterministic from Archon's POV — no loops,
+  no fresh_context juggling. Purely a reviewer that emits a structured
+  critique. Safe to run concurrently with any implement workflow.
+interactive: false
+
+# No worktree — we review an EXISTING branch, we don't create a new one.
+worktree:
+  enabled: false
+
+nodes:
+  - id: snapshot-diff
+    bash: |
+      set -e
+      # Determine target: either explicit arg $TARGET_REF, or HEAD of the
+      # most recent feature branch. For now default to current HEAD vs main.
+      target="${TARGET_REF:-HEAD}"
+      echo "# Review target: $target"
+      echo ""
+      echo "## Commit log (main..target)"
+      git log --oneline "main..$target" 2>&1 | head -20
+      echo ""
+      echo "## Summary of changes"
+      git diff --stat "main..$target" 2>&1 | tail -30
+
+  - id: codex-review
+    depends_on: [snapshot-diff]
+    bash: |
+      set -e
+      target="${TARGET_REF:-HEAD}"
+      diff_text=$(git diff "main..$target" 2>&1 | head -3000)
+      commits=$(git log --oneline "main..$target" 2>&1 | head -20)
+
+      # Use `codex exec` for non-interactive one-shot review.
+      # The prompt prepends context (commits + diff) and asks for a structured review.
+      codex exec --skip-git-repo-check --full-auto "$(cat <<PROMPT
+      You are reviewing a feature branch against main in the olik-font project.
+
+      ## Commits on this branch
+
+      $commits
+
+      ## Full diff
+
+      \`\`\`diff
+      $diff_text
+      \`\`\`
+
+      Produce a concise code review. Structure:
+
+      1. **What this branch delivers** (one sentence).
+      2. **Spec compliance** — do the commits match what any referenced
+         Plan XX file requires? Flag any deviation.
+      3. **Correctness concerns** — bugs, edge cases, missing assertions.
+      4. **Style / hygiene** — minor nits worth fixing.
+      5. **Verdict** — ✅ APPROVE / ⚠ NITS / ❌ BLOCKING.
+
+      Be terse. No preamble. Under 300 words.
+      PROMPT
+      )" 2>&1 | tail -60

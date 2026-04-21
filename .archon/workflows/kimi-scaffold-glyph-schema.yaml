@@ -1,0 +1,75 @@
+name: kimi-scaffold-glyph-schema
+description: >-
+  Experimental: use Kimi CLI (via bash:) to implement Plan 04 Task 1 — scaffold
+  the @olik/glyph-schema pnpm package. Single-shot (no loop; Archon's loop:
+  only works for the native AI-node Codex). Validates that Kimi can follow a
+  plan specification end-to-end including file creation + commit.
+interactive: false
+
+# Short task — run in the existing main checkout, don't create a worktree.
+# (If Kimi blows up, we revert with `git reset`; nothing long-running enough
+# to need the worktree guard.)
+worktree:
+  enabled: true
+
+nodes:
+  - id: setup-pnpm
+    bash: |
+      set -e
+      cd project/ts
+      if [ ! -d node_modules ]; then
+        pnpm install --no-frozen-lockfile
+      fi
+      echo "pnpm workspace ready"
+
+  - id: kimi-implement
+    depends_on: [setup-pnpm]
+    bash: |
+      set -e
+      # Kimi runs non-interactively via --print (implies --yolo) + --final-message-only.
+      # Working directory scoped to project/ts so it only touches TS files.
+      kimi \
+        --work-dir project/ts \
+        --add-dir vault/plans \
+        --print \
+        --yolo \
+        --final-message-only \
+        -p "$(cat <<'PROMPT'
+      You are implementing Plan 04 Task 1 of the olik-font project.
+
+      The plan file is at ../../vault/plans/2026-04-21-04-ts-foundation.md
+      (relative to your work-dir `project/ts`).
+
+      Task 1 says:
+      - Create `packages/glyph-schema/package.json` with the EXACT content shown in the plan.
+      - Create `packages/glyph-schema/tsconfig.json` with the EXACT content shown.
+      - Create `packages/glyph-schema/tsup.config.ts` with the EXACT content shown.
+      - Create `packages/glyph-schema/src/index.ts` with the EXACT content shown
+        (one line: `export const SCHEMA_VERSION = "0.1";`).
+      - Run `pnpm install` from `project/ts/` to update the lockfile.
+      - Commit staged files with message:
+          `chore(ts): scaffold @olik/glyph-schema package`
+
+      Constraints:
+      - Only create/modify files under `packages/glyph-schema/` and
+        `project/ts/pnpm-lock.yaml`. Touch NOTHING else.
+      - Use the exact content from the plan — do NOT improvise or add fields.
+      - Do NOT skip the commit.
+
+      When done, output exactly one line:
+          TASK-1 COMMIT <sha>
+      where <sha> is the short commit hash from `git log -1 --format=%h`.
+      PROMPT
+      )"
+
+  - id: verify
+    depends_on: [kimi-implement]
+    bash: |
+      set -e
+      cd project/ts
+      echo "--- files ---"
+      ls -la packages/glyph-schema/ 2>/dev/null || (echo "FAIL: glyph-schema dir missing"; exit 1)
+      echo "--- typecheck ---"
+      cd packages/glyph-schema && pnpm typecheck 2>&1 | tail -5 || (echo "FAIL: typecheck broken"; exit 1)
+      echo "--- last commit ---"
+      git log --oneline -3

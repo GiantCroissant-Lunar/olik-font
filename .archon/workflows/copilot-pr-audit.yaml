@@ -1,0 +1,59 @@
+name: copilot-pr-audit
+description: >-
+  Copilot CLI via bash: audits open PRs + issues on the repo. Lightweight
+  housekeeping — lists PRs needing labels, stale branches, CI-failing PRs,
+  and proposes small actions (not applied — just a report). Read-only;
+  idempotent; safe to run concurrently with implement workflows.
+interactive: false
+
+worktree:
+  enabled: false
+
+nodes:
+  - id: gh-context
+    bash: |
+      set -e
+      echo "# PR + issue snapshot for GiantCroissant-Lunar/olik-font"
+      echo ""
+      echo "## Open PRs"
+      gh pr list --repo GiantCroissant-Lunar/olik-font --state open --json number,title,labels,isDraft,headRefName --jq '.[] | "  #\(.number) [\(.headRefName)] \(.title) — labels: \(.labels | map(.name) | join(",") // "none")"' 2>&1 | head -20
+      echo ""
+      echo "## Recent branches (local)"
+      git branch --all | head -20
+      echo ""
+      echo "## Open issues"
+      gh issue list --repo GiantCroissant-Lunar/olik-font --state open --json number,title,labels --jq '.[] | "  #\(.number) \(.title)"' 2>&1 | head -10
+
+  - id: copilot-audit
+    depends_on: [gh-context]
+    bash: |
+      set -e
+      pr_snapshot="${gh_context.output:-(see previous node)}"
+      # Use Copilot CLI non-interactively. --allow-all lets it call gh read-only
+      # without per-tool prompting. We explicitly do NOT want Copilot to open
+      # PRs or close issues — the prompt is advisory-only.
+      copilot \
+        --allow-all-tools \
+        -p "$(cat <<'PROMPT'
+      You are auditing the state of GiantCroissant-Lunar/olik-font's
+      open PRs and issues. Your job is READ-ONLY — do not edit, close,
+      label, or comment.
+
+      Run:
+        gh pr list --repo GiantCroissant-Lunar/olik-font --state open --json number,title,labels,isDraft,headRefName,createdAt
+        gh issue list --repo GiantCroissant-Lunar/olik-font --state open --json number,title,labels,createdAt
+
+      For each open PR, report:
+        - Is it labeled appropriately (feat/fix/chore/docs/etc. matching the
+          first line of its title)?
+        - Is there a linked plan or issue? (scan the branch name for plan-XX)
+        - Any obvious staleness (>7d open)?
+
+      For each open issue, report:
+        - Is it labeled?
+        - Does it describe the problem clearly?
+
+      Format: markdown. Headings for PRs and Issues sections. Bullet list.
+      Max 300 words. Emit nothing else.
+      PROMPT
+      )" 2>&1 | tail -60
