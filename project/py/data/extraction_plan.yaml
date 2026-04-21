@@ -1,0 +1,116 @@
+# Hand-authored extraction + depth plan for the 4 seed characters.
+# Resolves D2, D3, D9 from the design spec.
+
+schema_version: "0.1"
+
+prototypes:
+  - id: proto:sun
+    name: "日"
+    from_char: "明"
+    stroke_indices: [0, 1, 2, 3]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      left_edge: [0, 512]
+      right_edge: [1024, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  - id: proto:moon
+    name: "月"
+    from_char: "明"
+    stroke_indices: [4, 5, 6, 7]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      left_edge: [0, 512]
+      right_edge: [1024, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  - id: proto:water_3dots
+    name: "氵"
+    from_char: "清"
+    stroke_indices: [0, 1, 2]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      right_edge: [1024, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  - id: proto:sheng
+    name: "生"
+    from_char: "青"
+    stroke_indices: [0, 1, 2, 3, 4]
+    roles: [sound]
+    anchors:
+      center: [512, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  - id: proto:enclosure_box
+    name: "囗"
+    from_char: "國"
+    stroke_indices: [0, 1, 2]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      inner_frame: [128, 128]
+      inner_frame_end: [896, 896]
+
+  - id: proto:huo
+    name: "或"
+    from_char: "國"
+    stroke_indices: [3, 4, 5, 6, 7, 8, 9, 10]
+    roles: [sound]
+    anchors:
+      center: [512, 512]
+
+  - id: proto:tree
+    name: "木"
+    from_char: "森"
+    stroke_indices: [0, 1, 2, 3]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+      left: [0, 512]
+      right: [1024, 512]
+
+glyphs:
+  明:
+    preset: left_right
+    children:
+      - prototype_ref: proto:sun
+        mode: keep
+      - prototype_ref: proto:moon
+        mode: keep
+
+  清:
+    preset: left_right
+    children:
+      - prototype_ref: proto:water_3dots
+        mode: keep
+      - prototype_ref: proto:qing
+        mode: refine
+        preset: top_bottom
+        children:
+          - prototype_ref: proto:sheng
+            mode: keep
+          - prototype_ref: proto:moon
+            mode: keep
+
+  國:
+    preset: enclose
+    children:
+      - prototype_ref: proto:enclosure_box
+        mode: keep
+      - prototype_ref: proto:huo
+        mode: keep
+
+  森:
+    preset: repeat_triangle
+    prototype_ref: proto:tree
+    count: 3
