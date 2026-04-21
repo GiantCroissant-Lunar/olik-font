@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://olik-font/schema/cjk-decomp.schema.json",
+  "title": "CjkDecomp",
+  "description": "Structured JSON form of the cjk-decomp dataset (https://github.com/amake/cjk-decomp). Each entry maps a character to its operator + components per cjk-decomp's grammar. Atomic characters have operator: null and components: [].",
+  "type": "object",
+  "required": ["schema_version", "source", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
+      "description": "Schema version of THIS file (not upstream data)."
+    },
+    "source": { "$ref": "#/definitions/Source" },
+    "entries": {
+      "type": "object",
+      "description": "Character → decomposition entry. Keys are single Unicode CJK characters.",
+      "additionalProperties": { "$ref": "#/definitions/Entry" }
+    }
+  },
+  "definitions": {
+    "Source": {
+      "type": "object",
+      "required": ["upstream", "commit", "license"],
+      "additionalProperties": false,
+      "properties": {
+        "upstream":     { "type": "string", "format": "uri" },
+        "commit":       { "type": "string", "minLength": 7 },
+        "license":      { "type": "string" },
+        "retrieved_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Entry": {
+      "type": "object",
+      "required": ["operator", "components"],
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "type": ["string", "null"],
+          "description": "cjk-decomp operator: lowercase letter(s) like 'a', 'c', 'b', 's', 'd', 'o', 't', 'ra', 'str', 'r3tr', 'd/t'. null means atomic."
+        },
+        "components": {
+          "type": "array",
+          "description": "Sub-character identifiers. Empty when atomic. May include numeric IDs for characters that don't have Unicode codepoints.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

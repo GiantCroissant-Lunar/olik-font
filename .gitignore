@@ -13,8 +13,14 @@ AGENTS.md
 
 # pass-1 additions
 .worktrees/
-project/py/data/
+# Ignore *contents* of project/py/data/ (not the dir itself) so we can
+# carve out specific files with `!`.
+project/py/data/*
 !project/py/data/.gitkeep
+# Committed dataset snapshot (Apache-2.0 from amake/cjk-decomp) and its
+# license note — regenerate via `task data:regen-cjk-decomp`.
+!project/py/data/cjk-decomp.json
+!project/py/data/LICENSE-cjk-decomp
 project/py/.pytest_cache/
 project/py/**/__pycache__/
 project/py/src/*.egg-info/

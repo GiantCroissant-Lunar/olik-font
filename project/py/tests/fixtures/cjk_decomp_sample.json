@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1",
+  "source": {
+    "upstream": "https://github.com/amake/cjk-decomp",
+    "commit": "0000000000000000000000000000000000000000",
+    "license": "Apache-2.0"
+  },
+  "entries": {
+    "明": { "operator": "c", "components": ["日", "月"] },
+    "清": { "operator": "c", "components": ["氵", "青"] },
+    "青": { "operator": "b", "components": ["生", "月"] },
+    "國": { "operator": "s", "components": ["囗", "或"] },
+    "或": { "operator": "c", "components": ["戈", "口"] },
+    "森": { "operator": "b", "components": ["木", "林"] },
+    "林": { "operator": "c", "components": ["木", "木"] },
+    "日": { "operator": null, "components": [] },
+    "月": { "operator": null, "components": [] },
+    "氵": { "operator": null, "components": [] },
+    "生": { "operator": null, "components": [] },
+    "囗": { "operator": null, "components": [] },
+    "戈": { "operator": null, "components": [] },
+    "口": { "operator": null, "components": [] },
+    "木": { "operator": null, "components": [] }
+  }
+}

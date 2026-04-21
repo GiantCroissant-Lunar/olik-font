@@ -31,23 +31,21 @@ nodes:
       .venv/bin/pytest -q | tail -5
 
   # --------------------------------------------------------------------------
-  # 2. Warm both caches (~15 MB MMH + ~1.4 MB cjk-decomp). Both fetchers
-  #    are idempotent: a no-op when files are present. Uses GitHub-side
-  #    downloads — no dependency on a local ref-projects/ clone, which
-  #    Archon's worktree at ~/.archon/worktrees/... wouldn't carry anyway.
+  # 2. Warm the MMH cache (~15 MB from GitHub, idempotent). cjk-decomp.json
+  #    is committed in the repo (per Phase 1 finalization), so there's no
+  #    network step for it — just verify it exists in the worktree.
   # --------------------------------------------------------------------------
   - id: warm-caches
     depends_on: [setup-venv]
     bash: |
       set -e
       cd project/py
+      test -f data/cjk-decomp.json || (echo "data/cjk-decomp.json missing; run 'task data:regen-cjk-decomp' on main and recommit" && exit 1)
       .venv/bin/python -c "
       from pathlib import Path
       from olik_font.sources.makemeahanzi import fetch_mmh
-      from olik_font.sources.cjk_decomp import fetch_cjk_decomp
       fetch_mmh(Path('data/mmh'))
-      fetch_cjk_decomp(Path('data'))
-      print('caches warm')
+      print('MMH cache warm')
       "
 
   # --------------------------------------------------------------------------

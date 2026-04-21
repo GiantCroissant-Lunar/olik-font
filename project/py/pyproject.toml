@@ -13,6 +13,7 @@ dependencies = [
   "requests>=2.31",
   "svgpathtools>=1.6",
   "shapely>=2.0",
+  "python-dateutil>=2.9",  # required by quicktype-generated types
 ]
 
 [project.optional-dependencies]
@@ -36,7 +37,8 @@ addopts = "-ra --strict-markers"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = [".venv", "data"]
+# Generated code is regenerated via `task codegen:*` — don't lint/format it.
+extend-exclude = [".venv", "data", "src/olik_font/generated"]
 
 [tool.ruff.lint]
 # Curated rule set: pyflakes, pycodestyle, import sorting, naming, warnings,

@@ -144,6 +144,30 @@ tasks:
     cmds:
       - git-cliff --config cliff.toml --unreleased
 
+  # ─── Data + Code Generation ────────────────────────────────────────────
+  data:regen-cjk-decomp:
+    desc: Fetch upstream cjk-decomp at pinned commit, rewrite project/py/data/cjk-decomp.json
+    cmds:
+      - python3 scripts/regen-cjk-decomp.py
+      - task: codegen:cjk-decomp
+
+  codegen:cjk-decomp:
+    desc: Regenerate cjk-decomp types from schema via quicktype (py + ts + zod)
+    vars:
+      SCHEMA: project/schema/cjk-decomp.schema.json
+      PY_OUT: project/py/src/olik_font/generated/cjk_decomp_types.py
+      TS_OUT: project/ts/packages/glyph-schema/src/generated/cjk-decomp-types.ts
+      ZOD_OUT: project/ts/packages/glyph-schema/src/generated/cjk-decomp-zod.ts
+    cmds:
+      - mkdir -p "$(dirname {{.PY_OUT}})" "$(dirname {{.TS_OUT}})"
+      - quicktype --src-lang schema --lang py --python-version 3.7 --top-level CjkDecomp --out {{.PY_OUT}} {{.SCHEMA}}
+      - quicktype --src-lang schema --lang ts --just-types --top-level CjkDecomp --out {{.TS_OUT}} {{.SCHEMA}}
+      - quicktype --src-lang schema --lang typescript-zod --top-level CjkDecomp --out {{.ZOD_OUT}} {{.SCHEMA}}
+
+  codegen:all:
+    desc: Run every codegen target
+    deps: [codegen:cjk-decomp]
+
   # ─── Housekeeping ──────────────────────────────────────────────────────
   clean:
     desc: Remove venv, node_modules, pytest caches, dist dirs

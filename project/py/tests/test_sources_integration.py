@@ -6,14 +6,17 @@ import pytest
 from olik_font.sources.cjk_decomp import load_cjk_decomp
 from olik_font.sources.makemeahanzi import load_mmh_graphics
 
-MMH_GRAPHICS = Path(__file__).resolve().parents[1] / "data" / "mmh" / "graphics.txt"
-CJK_DECOMP = Path(__file__).resolve().parents[1] / "data" / "cjk-decomp.txt"
+DATA = Path(__file__).resolve().parents[1] / "data"
+MMH_GRAPHICS = DATA / "mmh" / "graphics.txt"
+# cjk-decomp.json is committed to the repo; no skipif required.
+CJK_DECOMP = DATA / "cjk-decomp.json"
+
 SEED_CHARS = ["明", "清", "國", "森"]
 
 
 @pytest.mark.skipif(
     not MMH_GRAPHICS.exists(),
-    reason="run fetch_mmh once first (see Task 4 Step 5)",
+    reason="run `task data:fetch-mmh` or let the Archon workflow warm this cache",
 )
 def test_mmh_contains_seed_chars():
     chars = load_mmh_graphics(MMH_GRAPHICS)
@@ -22,11 +25,9 @@ def test_mmh_contains_seed_chars():
         assert len(chars[ch].strokes) > 0
 
 
-@pytest.mark.skipif(
-    not CJK_DECOMP.exists(),
-    reason="run extract_from_hanzijs once first (see Task 5 Step 6)",
-)
 def test_cjk_decomp_contains_seed_chars():
+    """cjk-decomp.json is committed; this test should never skip."""
+    assert CJK_DECOMP.exists(), f"{CJK_DECOMP} missing — regen via `task data:regen-cjk-decomp`"
     table = load_cjk_decomp(CJK_DECOMP)
     for ch in SEED_CHARS:
         assert ch in table, f"{ch} missing from cjk-decomp"

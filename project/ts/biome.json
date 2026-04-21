@@ -14,7 +14,8 @@
       "**/*.json",
       "!**/dist/**",
       "!**/node_modules/**",
-      "!**/.turbo/**"
+      "!**/.turbo/**",
+      "!**/src/generated/**"
     ]
   },
   "formatter": {

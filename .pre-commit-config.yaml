@@ -21,6 +21,9 @@ repos:
         exclude: "^project/ts/tsconfig\\.base\\.json$"  # allows JSONC comments
       - id: check-added-large-files
         args: ["--maxkb=500"]
+        # cjk-decomp.json is an Apache-2.0 dataset snapshot (85k entries,
+        # ~4.3 MB minified). Regenerated via `task data:regen-cjk-decomp`.
+        exclude: "^project/py/data/cjk-decomp\\.json$"
 
   # ─── Python: ruff handles both format + lint ─────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit

@@ -10,10 +10,10 @@ from olik_font.sources.cjk_decomp import (
     load_cjk_decomp,
 )
 
-FIXTURE = Path(__file__).parent / "fixtures" / "cjk_decomp_sample.txt"
+FIXTURE = Path(__file__).parent / "fixtures" / "cjk_decomp_sample.json"
 
 
-def test_load_parses_operator_and_args():
+def test_load_parses_operator_and_components():
     table = load_cjk_decomp(FIXTURE)
     assert table["明"] == CjkDecompEntry(char="明", operator="c", components=("日", "月"))
     assert table["青"] == CjkDecompEntry(char="青", operator="b", components=("生", "月"))
