@@ -1,0 +1,11 @@
+.vscode/
+
+ref-projects/
+
+.env
+
+# macOS noise
+.DS_Store
+
+# Per-developer agent overlay — each dev maintains their own, treat like .env
+AGENTS.md
