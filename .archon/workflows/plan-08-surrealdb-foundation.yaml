@@ -1,0 +1,320 @@
+name: plan-08-surrealdb-foundation
+description: >-
+  Execute Plan 08 (SurrealDB foundation). Python sink with connection +
+  schema + upsert helpers, three new CLI verbs (olik db sync/reset/export),
+  a TS workspace package @olik/glyph-db with typed queries + keyset
+  pagination + LIVE variant subscription, and Taskfile db:* lanes. Writes
+  the 4 seed glyph records through the new pipeline as a contract test.
+  All database interactions in tests use ephemeral in-memory SurrealDB
+  servers spawned per test session — the host's running dev DB is never
+  touched.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Python venv + install deps (adds `surrealdb` to the editable install).
+  # --------------------------------------------------------------------------
+  - id: setup-py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      # Plan 08 adds `surrealdb>=1.0,<2.0` to pyproject.toml, so reinstall
+      # the editable package to pick it up once the loop commits Task 1.
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -5
+      .venv/bin/pytest --version
+
+  # --------------------------------------------------------------------------
+  # 2. TS workspace install. The loop creates @olik/glyph-db during Task 7,
+  #    so we run `pnpm install --frozen-lockfile=false` again post-loop;
+  #    this node just primes the cache.
+  # --------------------------------------------------------------------------
+  - id: setup-ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -10
+
+  # --------------------------------------------------------------------------
+  # 3. Prebuild @olik/glyph-schema so @olik/glyph-db's workspace:* dep
+  #    resolves once Task 7 scaffolds it.
+  # --------------------------------------------------------------------------
+  - id: prebuild-schema
+    depends_on: [setup-ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm --filter "@olik/glyph-schema" build 2>&1 | tail -10
+      test -f packages/glyph-schema/dist/index.js
+      test -f packages/glyph-schema/dist/index.d.ts
+      echo "glyph-schema dist ready."
+
+  # --------------------------------------------------------------------------
+  # 4. Sanity: the `surreal` CLI must be on PATH so the ephemeral server
+  #    fixture can spawn it. If missing, the loop cannot proceed.
+  # --------------------------------------------------------------------------
+  - id: verify-surreal-cli
+    depends_on: [setup-py]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: `surreal` CLI not on PATH."
+        echo "Install with: brew install surrealdb/tap/surreal"
+        exit 1
+      fi
+      surreal --version
+      echo "surreal CLI ready."
+
+  # --------------------------------------------------------------------------
+  # 5. Implementation loop. Plan 08 has 10 tasks (sink scaffold + DDL,
+  #    upsert_prototype, upsert_glyph + uses edges, upsert_rules + cites,
+  #    olik db sync + reset, olik db export, TS glyph-db scaffold + contract,
+  #    list filters + getPrototypeUsers, LIVE variants, Taskfile + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [prebuild-schema, verify-surreal-cli]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 08 (SurrealDB foundation)
+        task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-08-surrealdb-foundation.md`.
+        Spec:       `vault/specs/2026-04-21-surrealdb-foundation-design.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit whose
+        message is spelled out in the plan.
+
+        Plans 01–07 are merged on main. In particular:
+          - `@olik/glyph-schema` is a built workspace package (prebuilt
+            in the prebuild-schema node before this loop started).
+          - `project/schema/examples/` contains the 4 seed records used
+            by the end-to-end verification in Task 10 (but see the
+            constraint about Task 10 Step 3 below).
+          - The `surreal` CLI is on PATH (verified by
+            verify-surreal-cli). Tests spawn ephemeral `surreal start
+            memory` servers on random ports via the
+            `surreal_ephemeral` pytest fixture / TS `startSurreal`
+            helper defined in Tasks 1 and 7.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 08, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 10 is the last committed task and the
+             `plan-08-surrealdb-foundation` tag is applied, output
+             **exactly** the single word `COMPLETE` on its own line
+             and exit.
+        4. Implement every step exactly as written in the plan. Follow
+           TDD: failing test first → verify it fails → implement →
+           verify it passes.
+        5. Run the verification command shown in the task. All tests
+           MUST pass before commit — both the new ones and the existing
+           ones (no regressions).
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 10's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - **Task 10 Step 3 (end-to-end smoke against a running DB) is
+          SKIPPED inside this workflow.** The reason: the host runs a
+          production-adjacent SurrealDB at `127.0.0.1:6480` with real
+          developer data, and `olik db reset --yes` against it would
+          destroy that data. Substitute the step with:
+          ```bash
+          cd project/py && .venv/bin/pytest -q 2>&1 | tail -5
+          cd ../ts   && pnpm -r test 2>&1 | tail -20
+          ```
+          If both pass, Task 10 Step 3 is satisfied for workflow
+          purposes. Note in the PR body that a human must run the real
+          `task db:seed` / `task db:export` smoke post-merge.
+        - The ephemeral SurrealDB fixture binds `127.0.0.1:<random>` —
+          if a test fails with "port already in use", the port picker
+          has a race; retry the test once.
+        - If the Python `surrealdb` package's API signature differs
+          from what the plan shows (e.g. `Surreal(url)` vs `Surreal()`
+          + `.connect(url)`), adjust the `connection.py` factory to
+          match the installed version's API. Document the adjustment
+          in the plan's "Adjustments after execution" section with a
+          one-line note. Do NOT change the public behavior.
+        - Same for the TS `surrealdb` package: `raw.query()`,
+          `raw.subscribeLive()`, `raw.kill()` names may vary slightly
+          between 1.x minor versions. Adjust minimally; record drift
+          in the plan.
+        - If `tsup` DTS generation fails with a `composite` error, set
+          `"composite": false` in the package-local tsconfig (same fix
+          as Plans 04, 05, 06, 07).
+        - Do NOT run `olik db sync` / `olik db reset` / `olik db
+          export` against `http://127.0.0.1:6480` — that is the host's
+          dev DB. These CLI smoke tests live in
+          `tests/test_cli_db_sync.py` / `test_cli_db_export.py` and
+          use the `surreal_ephemeral` fixture.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 14
+      idle_timeout: 1800000  # 30 min per task
+
+  # --------------------------------------------------------------------------
+  # 6. Workspace-wide Python test run.
+  # --------------------------------------------------------------------------
+  - id: run-py-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 7. Workspace-wide TS test run (includes new @olik/glyph-db suite).
+  # --------------------------------------------------------------------------
+  - id: run-ts-tests
+    depends_on: [run-py-tests]
+    bash: |
+      set -e
+      cd project/ts
+      # Re-run install so the new @olik/glyph-db package is linked.
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+      pnpm -r test 2>&1 | tail -30
+
+  # --------------------------------------------------------------------------
+  # 8. Workspace-wide typecheck (all packages + apps).
+  # --------------------------------------------------------------------------
+  - id: run-typecheck
+    depends_on: [run-ts-tests]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -30
+
+  # --------------------------------------------------------------------------
+  # 9. Workspace-wide build. remotion-studio's `build` script renders MP4
+  #    (requires ffmpeg) so we exclude it, matching Plan 06's convention.
+  # --------------------------------------------------------------------------
+  - id: run-build
+    depends_on: [run-typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -30
+      echo ""
+      echo "### Build artifacts"
+      for pkg in glyph-schema glyph-loader glyph-viz flow-nodes rule-viz glyph-db; do
+        if [ -d "packages/$pkg/dist" ]; then
+          echo "  packages/$pkg/dist/:"
+          ls -la "packages/$pkg/dist/" 2>/dev/null | awk 'NR>1 {print "    "$9" ("$5" bytes)"}'
+        fi
+      done
+
+  # --------------------------------------------------------------------------
+  # 10. Auto-approve: tests green (py + ts) + typecheck green + glyph-db
+  #     dist present + plan-08 tag applied.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run-build]
+    bash: |
+      set -e
+      echo "## Plan 08 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-08-surrealdb-foundation"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run-py-tests.output" | tail -5
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run-ts-tests.output" | tail -10
+      echo ""
+
+      py_ok=0
+      ts_ok=0
+      typecheck_ok=0
+      build_ok=0
+      tag_ok=0
+
+      if echo "$run-py-tests.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run-py-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run-ts-tests.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run-ts-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run-typecheck.output" | grep -qiE 'error'; then
+        typecheck_ok=0
+      else
+        typecheck_ok=1
+      fi
+      if [ -f project/ts/packages/glyph-db/dist/index.js ] && \
+         [ -f project/ts/packages/glyph-db/dist/index.d.ts ]; then
+        build_ok=1
+      fi
+      if git tag -l "plan-08-surrealdb-foundation" | grep -q plan-08; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && \
+         [ $typecheck_ok -eq 1 ] && [ $build_ok -eq 1 ] && \
+         [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$typecheck_ok build=$build_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 11. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 08: SurrealDB foundation — @olik/glyph-db + olik db sync/reset/export`
+
+      Body:
+        - 1-line summary: replaces static-JSON-per-glyph with SurrealDB
+          as the source of truth — Python sink via `olik db sync`,
+          typed TS client `@olik/glyph-db` with LIVE variant
+          subscription for future Plan 11 ComfyUI streaming, and
+          Taskfile `db:*` lanes.
+        - Commit list: `git log --oneline main..HEAD`.
+        - Final test count (py + ts breakdown).
+        - Tag: `plan-08-surrealdb-foundation`.
+        - **Action required post-merge**: the workflow skipped Task 10
+          Step 3 (end-to-end smoke against a running DB) because the
+          host's persistent `hanfont/olik` instance has real developer
+          data and `olik db reset --yes` would wipe it. A reviewer must
+          run manually after merging:
+          ```
+          task db:up
+          task db:seed
+          task db:export
+          diff -q infra/surrealdb/snapshots/$(date +%Y-%m-%d)/ project/schema/examples/
+          ```
+        - Links: spec
+          (vault/specs/2026-04-21-surrealdb-foundation-design.md),
+          Plan 08 doc (vault/plans/2026-04-21-08-surrealdb-foundation.md),
+          Plans 03/04 predecessors.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
