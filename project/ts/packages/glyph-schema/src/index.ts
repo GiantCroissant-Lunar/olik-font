@@ -8,3 +8,4 @@ export * from "./constraint.js";
 export * from "./layout-tree.js";
 export * from "./stroke-instance.js";
 export * from "./glyph-record.js";
+export * from "./rule-trace.js";
