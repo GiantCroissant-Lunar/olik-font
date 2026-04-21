@@ -1,0 +1,199 @@
+name: plan-03-python-compose-cli
+description: >-
+  Execute Plan 03 (Python compose + rules + CLI). Depends on Plan 02 being
+  merged (the Python core modules are what compose uses). Produces the first
+  visible artifacts: glyph-record-<char>.json + prototype-library.json +
+  rule-trace-<char>.json under project/schema/examples/, plus SVG previews
+  of all 4 seed characters so we can spot-check the reconstruction.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Python venv + deps
+  # --------------------------------------------------------------------------
+  - id: setup-venv
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -x .venv/bin/pytest ]; then
+        python3 -m venv .venv
+        .venv/bin/pip install --upgrade pip
+        .venv/bin/pip install -e ".[dev]"
+      fi
+      .venv/bin/pytest -q | tail -5
+
+  # --------------------------------------------------------------------------
+  # 2. Warm MMH cache. cjk-decomp.json is already in the worktree (committed
+  #    as part of Plan 01's Phase-1 finalization); no fetch needed for it.
+  # --------------------------------------------------------------------------
+  - id: warm-caches
+    depends_on: [setup-venv]
+    bash: |
+      set -e
+      cd project/py
+      test -f data/cjk-decomp.json || (echo "data/cjk-decomp.json missing" && exit 1)
+      .venv/bin/python -c "
+      from pathlib import Path
+      from olik_font.sources.makemeahanzi import fetch_mmh
+      fetch_mmh(Path('data/mmh'))
+      print('MMH cache warm')
+      "
+
+  # --------------------------------------------------------------------------
+  # 3. Implementation loop. Plan 03 has 8 tasks (compose walker, flatten,
+  #    z-layers, IoU, rules engine, emitters, CLI, IoU gate, final tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [warm-caches]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 03 (Python compose + rules + CLI)
+        task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-03-python-compose-cli.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit whose
+        message is spelled out in the plan. Plan 02 is already merged —
+        its modules (types, geom, prototypes, constraints, decompose) are
+        present and working.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 03, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 8 is the last committed task, output **exactly** the
+             single word `COMPLETE` on its own line and exit.
+        4. Implement every step exactly as written in the plan. Follow
+           TDD: failing test first → verify it fails → implement → verify
+           it passes.
+        5. Run the verification/pytest command. It must pass.
+        6. Run the commit command shown in the task.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - `ref-projects/` is read-only and does not exist in this worktree
+          anyway — if you find yourself reaching for it, stop.
+        - If a plan step references `project/schema/examples/` real records
+          that don't exist yet, that's fine — Task 6's CLI produces them.
+          Later tasks use `existsSync` guards or similar.
+
+        ## Plan 07 amendment (rules.json)
+        Plan 07's "Task 6 Step 3" asks for a small CLI amendment: after
+        writing `prototype-library.json`, also write `rules.json` (a copy
+        of `rules.yaml` parsed to JSON) into the output dir. Apply that
+        amendment as part of Task 6 in this plan. The snippet is in Plan 07.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 15
+      idle_timeout: 1800000  # 30 min per task
+
+  # --------------------------------------------------------------------------
+  # 4. Full regression. Plan 03 adds ~30 tests; total should land ~60-70.
+  # --------------------------------------------------------------------------
+  - id: run-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -v 2>&1 | tail -25
+
+  # --------------------------------------------------------------------------
+  # 5. Produce SVG previews for the 4 seed characters. This is the "did it
+  #    work visually?" signal we optimize for during pass-1 experimentation.
+  #    SVGs land under `preview/` (gitignored); the node prints their paths
+  #    so the reviewer can pull them up.
+  # --------------------------------------------------------------------------
+  - id: preview
+    depends_on: [run-tests]
+    bash: |
+      set -e
+      # Generate the JSON records fresh (idempotent — CLI is the same as
+      # what Task 6 emitted during implement, but this ensures a clean
+      # end-state regardless of which iteration last ran).
+      cd project/py && .venv/bin/olik build 明 清 國 森 -o ../schema/examples 2>&1 | tail -10
+      cd ../..
+
+      mkdir -p preview
+      for ch in 明 清 國 森; do
+        rec="project/schema/examples/glyph-record-$ch.json"
+        if [ -f "$rec" ]; then
+          python3 scripts/preview-glyph.py "$rec" --out "preview/$ch.svg"
+          echo "  wrote preview/$ch.svg"
+        else
+          echo "  MISSING: $rec"
+        fi
+      done
+
+      echo ""
+      echo "### Seed-character SVG previews"
+      ls -la preview/*.svg 2>/dev/null | awk '{print "  "$9" ("$5" bytes)"}'
+
+  # --------------------------------------------------------------------------
+  # 6. Auto-approve on test pass + all 4 SVGs present. Deterministic bash,
+  #    no interactive gate (see .agent/skills/00-meta/archon-workflows/
+  #    SKILL.md § Known hazards).
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [preview]
+    bash: |
+      set -e
+      echo "## Plan 03 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tests"
+      echo "$run-tests.output" | tail -5
+      echo ""
+      # Enforce: tests green + all 4 seed SVGs rendered.
+      tests_ok=0
+      previews_ok=0
+      if echo "$run-tests.output" | grep -qE '[0-9]+ passed' && ! echo "$run-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        tests_ok=1
+      fi
+      ls preview/明.svg preview/清.svg preview/國.svg preview/森.svg > /dev/null 2>&1 && previews_ok=1
+
+      if [ $tests_ok -eq 1 ] && [ $previews_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED (tests green, 4/4 SVGs rendered)"
+      else
+        echo "VERDICT: REJECTED (tests_ok=$tests_ok previews_ok=$previews_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 7. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 03: Python compose + rules + CLI (P6, P7, P8)`
+
+      Body:
+        - 1-line summary.
+        - Commit list (git log --oneline main..HEAD).
+        - Final test count.
+        - IoU report for each of 明/清/國/森: extract `metadata.iou_report.{mean,min}`
+          from each `project/schema/examples/glyph-record-<char>.json` and
+          include as a small table.
+        - Note that previews render under `preview/` (gitignored); reviewer
+          can regen locally with `task preview:seed` after checkout.
+        - Links: spec, Plan 03 doc, Plan 01/02 predecessors.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
