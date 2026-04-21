@@ -39,3 +39,12 @@ project/py/.venv/
 
 # Local preview output from scripts/preview-glyph.py
 preview/
+
+# Live preview record dropbox — Archon workflows COPY freshly-generated
+# glyph-record-*.json + prototype-library.json + rule-trace-*.json here so
+# apps/quickview can serve them via Vite publicDir without depending on a
+# specific worktree path. Persistent across workflow runs (overwritten).
+.preview-records/
+
+# TypeScript incremental build cache
+project/ts/**/tsconfig.tsbuildinfo

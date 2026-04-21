@@ -111,21 +111,25 @@ nodes:
       cd project/py && .venv/bin/pytest -v 2>&1 | tail -25
 
   # --------------------------------------------------------------------------
-  # 5. Produce SVG previews for the 4 seed characters. This is the "did it
-  #    work visually?" signal we optimize for during pass-1 experimentation.
-  #    SVGs land under `preview/` (gitignored); the node prints their paths
-  #    so the reviewer can pull them up.
+  # 5. Produce visible artifacts: SVGs for static spot-check + copy JSON
+  #    records into <source-repo>/.preview-records/ so apps/quickview can
+  #    serve them live (Vite publicDir). Without this copy step, the records
+  #    only exist in the worktree and get garbage-collected when Archon
+  #    cleans up — quickview would never see them.
+  #
+  #    SOURCE_REPO: env var Archon would set if it cooperated; for now
+  #    detect via `git rev-parse --show-toplevel` from the original location.
+  #    We compute it as the parent-of-the-worktree's parent's source dir.
   # --------------------------------------------------------------------------
   - id: preview
     depends_on: [run-tests]
     bash: |
       set -e
-      # Generate the JSON records fresh (idempotent — CLI is the same as
-      # what Task 6 emitted during implement, but this ensures a clean
-      # end-state regardless of which iteration last ran).
+      # Regenerate records (idempotent — re-runs the CLI to ensure end-state)
       cd project/py && .venv/bin/olik build 明 清 國 森 -o ../schema/examples 2>&1 | tail -10
       cd ../..
 
+      # Render SVGs in the worktree (mostly for the workflow log).
       mkdir -p preview
       for ch in 明 清 國 森; do
         rec="project/schema/examples/glyph-record-$ch.json"
@@ -137,8 +141,43 @@ nodes:
         fi
       done
 
+      # Copy JSON records into the source repo's .preview-records/ dropbox so
+      # apps/quickview can serve them live without depending on this worktree
+      # (which gets cleaned up). The source repo is the parent's-parent of
+      # this worktree's path: ~/.archon/worktrees/<owner>/<repo>/archon/X/
+      # → resolve via the codebase registration.
+      #
+      # Heuristic: walk up until we find a sibling 'project' dir AND
+      # an .archon/workflows/ dir (matching this checkout's layout).
+      worktree_path=$(pwd)
+      source_repo=""
+      # Archon registers codebases by URL; the source path is
+      # ~/.archon/workspaces/<owner>/<repo>/source — try that first.
+      for cand in \
+        "$HOME/.archon/workspaces/GiantCroissant-Lunar/olik-font/source" \
+        "$(git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]||;s|.git$||' | xargs -I{} echo $HOME/.archon/workspaces/{}/source)"; do
+        if [ -d "$cand/.archon/workflows" ]; then
+          source_repo="$cand"
+          break
+        fi
+      done
+
+      if [ -n "$source_repo" ]; then
+        dropbox="$source_repo/.preview-records"
+        mkdir -p "$dropbox"
+        cp project/schema/examples/glyph-record-*.json "$dropbox/" 2>/dev/null || true
+        cp project/schema/examples/prototype-library.json "$dropbox/" 2>/dev/null || true
+        cp project/schema/examples/rule-trace-*.json "$dropbox/" 2>/dev/null || true
+        cp project/schema/examples/rules.json "$dropbox/" 2>/dev/null || true
+        echo ""
+        echo "### Records copied to source repo for live preview"
+        ls -la "$dropbox/" | awk '{print "  "$9" ("$5" bytes)"}'
+      else
+        echo "WARNING: could not locate source repo path; quickview won't auto-update."
+      fi
+
       echo ""
-      echo "### Seed-character SVG previews"
+      echo "### Seed-character SVG previews (worktree-local)"
       ls -la preview/*.svg 2>/dev/null | awk '{print "  "$9" ("$5" bytes)"}'
 
   # --------------------------------------------------------------------------
