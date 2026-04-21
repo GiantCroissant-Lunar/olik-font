@@ -35,9 +35,11 @@ def test_extract_all_populates_library():
     lib = PrototypeLibrary()
     extract_all_prototypes(plan, chars, lib)
 
-    assert len(lib) == 7
+    assert len(lib) == 9
     assert lib.contains("proto:sun")
     assert lib.contains("proto:tree")
+    assert lib.contains("proto:sheng_in_qing")
+    assert lib.contains("proto:moon_in_qing")
 
 
 def test_missing_char_raises():

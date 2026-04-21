@@ -18,11 +18,12 @@ def test_load_returns_typed_plan():
     assert plan.schema_version == "0.1"
 
 
-def test_plan_has_seven_prototypes():
+def test_plan_has_nine_prototypes():
     plan = load_extraction_plan(PLAN)
-    assert len(plan.prototypes) == 7
+    assert len(plan.prototypes) == 9
     ids = {p.id for p in plan.prototypes}
     assert "proto:sun" in ids and "proto:tree" in ids
+    assert "proto:sheng_in_qing" in ids and "proto:moon_in_qing" in ids
 
 
 def test_prototype_plan_keeps_stroke_indices_as_tuple():

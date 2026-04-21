@@ -28,8 +28,8 @@ def test_qing_refines_to_depth_2():
     assert qing.mode == "refine"
     assert qing.input_adapter == "preset:top_bottom"
     assert len(qing.children) == 2
-    assert qing.children[0].prototype_ref == "proto:sheng"
-    assert qing.children[1].prototype_ref == "proto:moon"
+    assert qing.children[0].prototype_ref == "proto:sheng_in_qing"
+    assert qing.children[1].prototype_ref == "proto:moon_in_qing"
     # depths
     assert water.depth == 1
     assert qing.depth == 1

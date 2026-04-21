@@ -40,12 +40,38 @@ prototypes:
       bottom: [512, 1024]
 
   - id: proto:sheng
-    name: "生"
+    name: "龶"
     from_char: "青"
-    stroke_indices: [0, 1, 2, 3, 4]
+    stroke_indices: [0, 1, 2, 3]
     roles: [sound]
     anchors:
       center: [512, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  # Context-specific variants of 龶 and 月 as they appear inside 清's 青
+  # subtree. Proportions differ from the canonical 青-extracted / 明-extracted
+  # versions because 清 compresses 青 into its right column, so we re-extract
+  # from 清 directly to keep compose IoU high.
+  - id: proto:sheng_in_qing
+    name: "龶"
+    from_char: "清"
+    stroke_indices: [3, 4, 5, 6]
+    roles: [sound]
+    anchors:
+      center: [512, 512]
+      top: [512, 0]
+      bottom: [512, 1024]
+
+  - id: proto:moon_in_qing
+    name: "月"
+    from_char: "清"
+    stroke_indices: [7, 8, 9, 10]
+    roles: [meaning]
+    anchors:
+      center: [512, 512]
+      left_edge: [0, 512]
+      right_edge: [1024, 512]
       top: [512, 0]
       bottom: [512, 1024]
 
@@ -97,9 +123,9 @@ glyphs:
         mode: refine
         preset: top_bottom
         children:
-          - prototype_ref: proto:sheng
+          - prototype_ref: proto:sheng_in_qing
             mode: keep
-          - prototype_ref: proto:moon
+          - prototype_ref: proto:moon_in_qing
             mode: keep
 
   國:

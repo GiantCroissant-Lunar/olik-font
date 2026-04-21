@@ -52,8 +52,8 @@ def test_qing_skips_refine_intermediate(lib_and_plan):
     tree = build_instance_tree("清", plan)
     resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
     strokes = flatten_strokes(resolved, lib)
-    # 氵 (3) + 生 (5) + 月 (4) = 12. The refine-intermediate 青 has no own strokes.
-    assert len(strokes) == 12
+    # 氵 (3) + 龶 (4) + 月 (4) = 11. The refine-intermediate 青 has no own strokes.
+    assert len(strokes) == 11
     refs = {s.instance_id.split("_")[0] for s in strokes}
-    # at least three distinct source instances (氵, 生, 月)
+    # at least three distinct source instances (氵, 龶, 月)
     assert len(refs) >= 3

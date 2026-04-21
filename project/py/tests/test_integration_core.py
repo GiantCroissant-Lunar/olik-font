@@ -34,13 +34,15 @@ def test_all_seed_chars_build_instance_trees(lib_and_plan):
         assert len(tree.children) in (2, 3)
 
 
-def test_prototype_library_has_expected_seven(lib_and_plan):
+def test_prototype_library_has_expected_nine(lib_and_plan):
     lib, _ = lib_and_plan
     expected = {
         "proto:sun",
         "proto:moon",
         "proto:water_3dots",
         "proto:sheng",
+        "proto:sheng_in_qing",
+        "proto:moon_in_qing",
         "proto:enclosure_box",
         "proto:huo",
         "proto:tree",
@@ -54,7 +56,7 @@ def test_qing_tree_refines(lib_and_plan):
     right = tree.children[1]
     assert right.mode == "refine"
     leaf_refs = {c.prototype_ref for c in right.children}
-    assert leaf_refs == {"proto:sheng", "proto:moon"}
+    assert leaf_refs == {"proto:sheng_in_qing", "proto:moon_in_qing"}
 
 
 def test_senr_has_three_leaves_of_same_prototype(lib_and_plan):
