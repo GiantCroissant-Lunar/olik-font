@@ -178,6 +178,25 @@ importers:
         specifier: 2.1.2
         version: 2.1.2(@types/node@22.7.5)(jsdom@25.0.1)(terser@5.46.1)
 
+  packages/glyph-db:
+    dependencies:
+      '@olik/glyph-schema':
+        specifier: workspace:*
+        version: link:../glyph-schema
+      surrealdb:
+        specifier: ^2.0.3
+        version: 2.0.3(tslib@2.8.1)(typescript@5.6.3)
+    devDependencies:
+      tsup:
+        specifier: 8.3.0
+        version: 8.3.0(postcss@8.5.10)(typescript@5.6.3)
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+      vitest:
+        specifier: 2.1.2
+        version: 2.1.2(@types/node@22.7.5)(jsdom@25.0.1)(terser@5.46.1)
+
   packages/glyph-loader:
     dependencies:
       '@olik/glyph-schema':
@@ -1103,6 +1122,10 @@ packages:
     resolution: {integrity: sha512-Nd/SgG27WoA9e+/TdK74KnHz852TLa94ovOYySo/yMPuTmpckK/jIF2jSwS3g7ELSKXK13/cVdmg1Z/DaCWKxA==}
     cpu: [x64]
     os: [win32]
+
+  '@surrealdb/cbor@2.0.0-alpha.4':
+    resolution: {integrity: sha512-l/hNZ3ZCOJq8rzwx1y5ZV/8b2bYCWdhGqRVY33Pu50NAHyAW5qLsMn3ZBkZow77mAKwNCsbDsRGnyYEuU95mjw==}
+    engines: {node: '>=18.0.0'}
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -2184,6 +2207,12 @@ packages:
     resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
     engines: {node: '>=10'}
 
+  surrealdb@2.0.3:
+    resolution: {integrity: sha512-60dXe7K+7M5EUr6VyIgd/SEUCKFXqc54JHUhCTG8IDlqp7pmuuQQWs2wpgulp2oSXpy+9jwKhgNR/mP3wrEgfw==}
+    peerDependencies:
+      tslib: ^2.6.3
+      typescript: ^5.0.0
+
   symbol-tree@3.2.4:
     resolution: {integrity: sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==}
 
@@ -2319,6 +2348,10 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
+
+  uuidv7@1.2.1:
+    resolution: {integrity: sha512-4kPkK3/XTQW9Hbm4CaqfICn+kY9LJtDVEOfgsRRra/+n2Ofg4NqzRFceAkxvQ/Ud/6BpHOPzj8cirqM7TzTN5Q==}
+    hasBin: true
 
   vite-node@2.1.2:
     resolution: {integrity: sha512-HPcGNN5g/7I2OtPjLqgOtCRu/qhVvBxTUD3qzitmL0SrG1cWFzxzhMDWussxSbrRYWqnKf8P2jiNhPMSN+ymsQ==}
@@ -3134,6 +3167,8 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.60.2':
     optional: true
+
+  '@surrealdb/cbor@2.0.0-alpha.4': {}
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -4282,6 +4317,13 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
+  surrealdb@2.0.3(tslib@2.8.1)(typescript@5.6.3):
+    dependencies:
+      '@surrealdb/cbor': 2.0.0-alpha.4
+      tslib: 2.8.1
+      typescript: 5.6.3
+      uuidv7: 1.2.1
+
   symbol-tree@3.2.4: {}
 
   tapable@2.3.2: {}
@@ -4402,6 +4444,8 @@ snapshots:
       react: 18.3.1
 
   util-deprecate@1.0.2: {}
+
+  uuidv7@1.2.1: {}
 
   vite-node@2.1.2(@types/node@22.7.5)(terser@5.46.1):
     dependencies:

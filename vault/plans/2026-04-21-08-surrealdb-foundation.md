@@ -2132,3 +2132,5 @@ _Notes on field-name drift, SurrealDB protocol surprises, or test-harness flakin
 
 - Task 2: the installed SurrealDB build rejected `type::thing(...)`, and `UPDATE ... MERGE` did not create missing rows; `project/py/src/olik_font/sink/surrealdb.py` uses `UPSERT type::record(...) MERGE ...` instead with no behavior change.
 - Task 2: the Python client returns `SELECT` payloads as row lists and record IDs as `RecordID` objects, so sink tests normalize both shapes before asserting.
+- Task 7: `surrealdb@^1.0.0` resolved to a 1.3.x client that rejects SurrealDB 3.0.4; `project/ts/packages/glyph-db/package.json` uses `surrealdb@^2.0.3` instead.
+- Task 7: the installed JS client exposes `query()` as a query-builder that needs `.collect()`, and the test harness also needed `UPSERT type::record(...)` instead of `type::thing(...)`; the package/test helpers were adjusted with no public API change.
