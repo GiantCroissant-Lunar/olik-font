@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "prepare-data": "mkdir -p public/data && cp ../../../schema/examples/*.json public/data/",
+    "dev": "npm run prepare-data && vite",
+    "build": "npm run prepare-data && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
