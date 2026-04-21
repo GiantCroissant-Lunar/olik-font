@@ -3,7 +3,9 @@ import { Composition, continueRender, delayRender } from "remotion";
 import type { GlyphBundle } from "@olik/glyph-loader";
 import { CharacterAnim, type CharacterAnimProps } from "./compositions/CharacterAnim.js";
 import { DecompositionTree, type DecompositionTreeProps } from "./compositions/DecompositionTree.js";
+import { LayerZDepth, type LayerZDepthProps } from "./compositions/LayerZDepth.js";
 import { PrototypeGraph, type PrototypeGraphProps } from "./compositions/PrototypeGraph.js";
+import { VirtualCoord, type VirtualCoordProps } from "./compositions/VirtualCoord.js";
 import { loadSeedBundle, SEED_CHARS } from "./load-records.js";
 import { totalStrokeFrames } from "./timing.js";
 
@@ -76,6 +78,28 @@ export const RemotionRoot: React.FC = () => {
         height={720}
         defaultProps={{ bundle, highlightChar: undefined }}
       />
+      {SEED_CHARS.map((ch) => (
+        <React.Fragment key={`extra-${ch}`}>
+          <Composition<any, LayerZDepthProps>
+            id={`LayerZDepth-${ch}`}
+            component={LayerZDepth}
+            durationInFrames={90}
+            fps={30}
+            width={1280}
+            height={720}
+            defaultProps={{ bundle, char: ch }}
+          />
+          <Composition<any, VirtualCoordProps>
+            id={`VirtualCoord-${ch}`}
+            component={VirtualCoord}
+            durationInFrames={90}
+            fps={30}
+            width={1280}
+            height={720}
+            defaultProps={{ bundle, char: ch }}
+          />
+        </React.Fragment>
+      ))}
     </>
   );
 };
