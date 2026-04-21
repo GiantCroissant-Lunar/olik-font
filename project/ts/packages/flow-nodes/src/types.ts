@@ -1,12 +1,12 @@
 import type { LayoutNode, Prototype } from "@olik/glyph-schema";
 
-export interface PrototypeNodeData {
+export interface PrototypeNodeData extends Record<string, unknown> {
   prototype: Prototype;
   instanceCount: number;
   hostingChars: readonly string[];
 }
 
-export interface DecompNodeData {
+export interface DecompNodeData extends Record<string, unknown> {
   char: string;
   operator: string | null;
   components: readonly string[];
@@ -14,7 +14,7 @@ export interface DecompNodeData {
   ruleId?: string;
 }
 
-export interface PlacementNodeData {
+export interface PlacementNodeData extends Record<string, unknown> {
   node: LayoutNode;
 }
 

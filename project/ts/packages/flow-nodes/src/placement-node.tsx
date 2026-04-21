@@ -1,9 +1,11 @@
 import * as React from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { InputAdapterChip, ModeIndicator } from "@olik/glyph-viz";
-import type { PlacementNodeData } from "./types.js";
+import { NODE_TYPE_KEYS, type PlacementNodeData } from "./types.js";
 
-export const PlacementNode: React.FC<NodeProps<{ data: PlacementNodeData }>> = ({ data }) => {
+type PlacementFlowNode = Node<PlacementNodeData, typeof NODE_TYPE_KEYS.placement>;
+
+export const PlacementNode: React.FC<NodeProps<PlacementFlowNode>> = ({ data }) => {
   const node = data.node;
 
   return (

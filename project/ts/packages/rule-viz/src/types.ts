@@ -1,6 +1,6 @@
 import type { RuleTrace } from "@olik/glyph-schema";
 
-export interface RuleNodeData {
+export interface RuleNodeData extends Record<string, unknown> {
   ruleId: string;
   bucket: "decomposition" | "composition" | "prototype_extraction";
   when: Record<string, unknown>;

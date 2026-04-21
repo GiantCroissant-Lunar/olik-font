@@ -2,6 +2,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { App } from "../src/App.js";
 
+class ResizeObserverMock {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+
 vi.mock("@olik/glyph-loader", () => ({
   loadPrototypeLibraryUrl: vi.fn(async () => ({
     prototypes: {},
@@ -26,7 +34,7 @@ vi.mock("@olik/glyph-loader", () => ({
 }));
 
 describe("Task 5 shell", () => {
-  test("loads app state and renders top nav + char picker", async () => {
+  test("loads app state and renders decomposition explorer content", async () => {
     render(<App />);
 
     expect(screen.getByText("loading…")).toBeTruthy();
@@ -44,6 +52,8 @@ describe("Task 5 shell", () => {
     expect(screen.getByRole("button", { name: "國" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "森" })).toBeTruthy();
 
-    expect(screen.getByText((_, element) => element?.textContent === "view decomposition, char 明 (views land in Task 6)")).toBeTruthy();
+    expect(screen.queryByText(/views land in Task 6/)).toBeNull();
+    expect(screen.getByText("明")).toBeTruthy();
+    expect(screen.getByText("op: atomic")).toBeTruthy();
   });
 });

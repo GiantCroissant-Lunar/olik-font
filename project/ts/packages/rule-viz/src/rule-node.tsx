@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import type { RuleNodeData } from "./types.js";
 
 const BUCKET_COLOR: Record<RuleNodeData["bucket"], string> = {
@@ -8,9 +8,14 @@ const BUCKET_COLOR: Record<RuleNodeData["bucket"], string> = {
   prototype_extraction: "#d97706",
 };
 
-export const RuleNode: React.FC<
-  NodeProps<{ data: RuleNodeData & { firedInView?: boolean; isAlternativeInView?: boolean } }>
-> = ({ data }) => {
+type RuleFlowNodeData = RuleNodeData & {
+  firedInView?: boolean;
+  isAlternativeInView?: boolean;
+};
+
+type RuleFlowNode = Node<RuleFlowNodeData, "olik-rule">;
+
+export const RuleNode: React.FC<NodeProps<RuleFlowNode>> = ({ data }) => {
   const color = BUCKET_COLOR[data.bucket];
   const bg = data.firedInView ? "#dcfce7" : data.isAlternativeInView ? "#fef3c7" : "#ffffff";
   const border = data.firedInView ? "#16a34a" : data.isAlternativeInView ? "#ca8a04" : color;

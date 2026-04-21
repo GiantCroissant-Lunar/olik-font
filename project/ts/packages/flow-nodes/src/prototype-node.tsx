@@ -1,9 +1,11 @@
 import * as React from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { StrokePath } from "@olik/glyph-viz";
-import type { PrototypeNodeData } from "./types.js";
+import { NODE_TYPE_KEYS, type PrototypeNodeData } from "./types.js";
 
-export const PrototypeNode: React.FC<NodeProps<{ data: PrototypeNodeData }>> = ({ data }) => {
+type PrototypeFlowNode = Node<PrototypeNodeData, typeof NODE_TYPE_KEYS.prototype>;
+
+export const PrototypeNode: React.FC<NodeProps<PrototypeFlowNode>> = ({ data }) => {
   const { prototype, instanceCount, hostingChars } = data;
 
   return (
