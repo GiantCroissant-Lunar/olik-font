@@ -2129,3 +2129,6 @@ git tag -a plan-08-surrealdb-foundation \
 ## Adjustments after execution
 
 _Notes on field-name drift, SurrealDB protocol surprises, or test-harness flakiness found during implementation._
+
+- Task 2: the installed SurrealDB build rejected `type::thing(...)`, and `UPDATE ... MERGE` did not create missing rows; `project/py/src/olik_font/sink/surrealdb.py` uses `UPSERT type::record(...) MERGE ...` instead with no behavior change.
+- Task 2: the Python client returns `SELECT` payloads as row lists and record IDs as `RecordID` objects, so sink tests normalize both shapes before asserting.
