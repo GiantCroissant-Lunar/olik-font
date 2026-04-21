@@ -1,0 +1,206 @@
+name: plan-04-ts-foundation
+description: >-
+  Execute Plan 04 (TS foundation — @olik/glyph-schema + @olik/glyph-loader).
+  Scaffolds two pnpm packages: zod-backed type definitions mirroring the JSON
+  schemas, plus fs/URL/bundle loaders. Real-record tests validate against the
+  four seed glyphs produced by Plan 03's CLI (already on main as of commit
+  17b5f72). Supersedes PR #2 (Kimi's single-task scaffold); that PR can be
+  closed unmerged once this workflow's PR lands.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Environment setup. pnpm workspace already declared at project/ts;
+  #    packages/glyph-schema/src/generated/ exists on main (from Plan 01's
+  #    quicktype codegen) — Codex must co-exist with it, not clobber it.
+  # --------------------------------------------------------------------------
+  - id: setup-ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -10
+
+  # --------------------------------------------------------------------------
+  # 2. Sanity-check that Plan 03's seed records are present — Task 6 & Task 9
+  #    tests validate against these and will skip (not fail) if missing, but
+  #    we want the full 12+ test count.
+  # --------------------------------------------------------------------------
+  - id: verify-fixtures
+    depends_on: [setup-ts]
+    bash: |
+      set -e
+      missing=0
+      for f in prototype-library.json \
+               glyph-record-明.json glyph-record-清.json \
+               glyph-record-國.json glyph-record-森.json \
+               rule-trace-明.json rule-trace-清.json \
+               rule-trace-國.json rule-trace-森.json; do
+        if [ ! -f "project/schema/examples/$f" ]; then
+          echo "MISSING: project/schema/examples/$f"
+          missing=$((missing+1))
+        fi
+      done
+      if [ $missing -gt 0 ]; then
+        echo "FATAL: $missing Plan 03 fixture(s) missing; real-record tests will skip."
+        echo "Regenerate locally: cd project/py && .venv/bin/olik build 明 清 國 森 -o ../schema/examples"
+        exit 1
+      fi
+      echo "All 9 Plan 03 fixtures present."
+
+  # --------------------------------------------------------------------------
+  # 3. Implementation loop. Plan 04 has 10 tasks (scaffold schema, per-schema
+  #    zod definitions, rule-trace, validate real records, scaffold loader,
+  #    fs loader, URL + bundle, final verification + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify-fixtures]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 04 (TS foundation) task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-04-ts-foundation.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit whose
+        message is spelled out in the plan.
+
+        Plan 01, 02, and 03 are already merged on main. In particular:
+          - `project/ts/packages/glyph-schema/src/generated/` exists
+            (quicktype-generated cjk-decomp types from Plan 01). Do NOT
+            delete or overwrite this directory. Your `src/index.ts` should
+            not re-export from `generated/` — it stays a private artifact.
+          - `project/schema/examples/` holds real seed records from Plan 03:
+            prototype-library.json, glyph-record-<明清國森>.json, and
+            rule-trace-<明清國森>.json. Task 6 & Task 9's real-record tests
+            use these; all 4 glyphs currently have IoU ≈ 1.0.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 04, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 10 is the last committed task (plan-04-ts-foundation
+             tag applied), output **exactly** the single word `COMPLETE`
+             on its own line and exit.
+        4. Implement every step exactly as written in the plan. Follow
+           TDD: failing test first → verify it fails → implement → verify
+           it passes. For tasks that only add config/scaffold (Tasks 1, 7)
+           the plan's "expected" line is the pass criterion — run it.
+        5. Run the verification command shown in the task (pnpm typecheck,
+           pnpm test, pnpm build). It must pass before commit.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 10's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - Do not overwrite `project/ts/packages/glyph-schema/src/generated/`.
+        - pnpm install has already been run at workflow start; you only need
+          to re-run it if the plan explicitly adds a new dependency.
+        - Use workspace protocol (`workspace:*`) for cross-package deps.
+        - If a plan step shows `@olik/glyph-schema` as a dep in another
+          package's package.json and pnpm complains about version mismatch,
+          run `pnpm install` from `project/ts/` to refresh the workspace.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 15
+      idle_timeout: 1800000  # 30 min per task
+
+  # --------------------------------------------------------------------------
+  # 4. Workspace-wide test run.
+  # --------------------------------------------------------------------------
+  - id: run-tests
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/ts && pnpm -r test 2>&1 | tail -40
+
+  # --------------------------------------------------------------------------
+  # 5. Workspace-wide build — proves both packages produce ESM+CJS+dts.
+  # --------------------------------------------------------------------------
+  - id: run-build
+    depends_on: [run-tests]
+    bash: |
+      set -e
+      cd project/ts && pnpm -r --filter "@olik/glyph-schema" --filter "@olik/glyph-loader" build 2>&1 | tail -40
+      echo ""
+      echo "### Build artifacts"
+      for pkg in glyph-schema glyph-loader; do
+        echo "  project/ts/packages/$pkg/dist/:"
+        ls -la "project/ts/packages/$pkg/dist/" 2>/dev/null | awk 'NR>1 {print "    "$9" ("$5" bytes)"}'
+      done
+
+  # --------------------------------------------------------------------------
+  # 6. Auto-approve on tests green + both dist/ dirs populated.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run-build]
+    bash: |
+      set -e
+      echo "## Plan 04 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Final test tail"
+      echo "$run-tests.output" | tail -10
+      echo ""
+
+      tests_ok=0
+      build_ok=0
+
+      if echo "$run-tests.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        tests_ok=1
+      fi
+      if [ -f project/ts/packages/glyph-schema/dist/index.js ] && \
+         [ -f project/ts/packages/glyph-schema/dist/index.d.ts ] && \
+         [ -f project/ts/packages/glyph-loader/dist/index.js ] && \
+         [ -f project/ts/packages/glyph-loader/dist/index.d.ts ]; then
+        build_ok=1
+      fi
+
+      if [ $tests_ok -eq 1 ] && [ $build_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED (tests green, both packages built)"
+      else
+        echo "VERDICT: REJECTED (tests_ok=$tests_ok build_ok=$build_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 7. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create-pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      Title: `Plan 04: TS foundation — @olik/glyph-schema + @olik/glyph-loader`
+
+      Body:
+        - 1-line summary of what ships (two packages, zod-backed schemas,
+          fs+URL+bundle loaders, real-record validation against Plan 03's
+          seed glyphs).
+        - Commit list: `git log --oneline main..HEAD`.
+        - Final test count (per-package breakdown if easy).
+        - Note: supersedes PR #2 (Kimi's single-task scaffold). That PR
+          can be closed unmerged once this lands.
+        - Links: spec, Plan 04 doc
+          (vault/plans/2026-04-21-04-ts-foundation.md), Plan 01/03
+          predecessors.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
