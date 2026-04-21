@@ -1,0 +1,291 @@
+name: plan-09-bulk-extraction
+description: >-
+  Execute Plan 09 (bulk extraction pipeline). New olik_font.bulk/ module
+  tree (charlist, ops, status, reuse, planner, batch), four CLI verbs
+  (olik extract auto/report/list/retry/backfill-status), MoE 4808 char
+  list committed as data/moe_4808.txt, schema adds (status field index,
+  variant_of edge), and Taskfile extract:* lanes. All DB interactions
+  use the ephemeral surreal_ephemeral fixture — the host's dev DB is
+  never touched.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Python venv install. Plan 09 adds no new Python deps (reuses
+  #    surrealdb from Plan 08), but we reinstall editable anyway so the
+  #    new olik_font.bulk/ package resolves as the loop creates it.
+  # --------------------------------------------------------------------------
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  # --------------------------------------------------------------------------
+  # 2. Verify the `surreal` CLI is on PATH so the ephemeral fixture can
+  #    spawn it. Same check as Plan 08.
+  # --------------------------------------------------------------------------
+  - id: verify_surreal
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: surreal CLI not on PATH."
+        echo "Install with: brew install surrealdb/tap/surreal"
+        exit 1
+      fi
+      surreal --version
+      echo "surreal CLI ready."
+
+  # --------------------------------------------------------------------------
+  # 3. TS workspace install (needed for the regression test run post-loop,
+  #    since Plan 09's schema DDL change could hypothetically affect
+  #    @olik/glyph-db's contract test — which it won't, because Plan 09
+  #    adds fields but doesn't change existing ones).
+  # --------------------------------------------------------------------------
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  # --------------------------------------------------------------------------
+  # 4. Prebuild workspace packages so later typecheck / test nodes resolve.
+  # --------------------------------------------------------------------------
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+      for pkg in glyph-schema glyph-loader glyph-viz glyph-db; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING $pkg dist"; exit 1)
+      done
+      echo "All 4 workspace packages built."
+
+  # --------------------------------------------------------------------------
+  # 5. Implementation loop. Plan 09 has 9 tasks (Status + schema, charlist,
+  #    ops LUT, reuse, planner, batch, CLI auto+report+backfill, CLI
+  #    list+retry, Taskfile + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify_surreal, prebuild_ts]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 09 (bulk extraction pipeline)
+        task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-21-09-bulk-extraction.md`.
+        Spec:       `vault/specs/2026-04-21-bulk-extraction-design.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit
+        whose message is spelled out in the plan.
+
+        Plans 01–08 are merged on main. In particular:
+          - Plan 08 gave us `olik_font.sink.{connection,schema,surrealdb}`,
+            the `surreal_ephemeral` pytest fixture, and CLI verbs
+            `olik db {sync,reset,export}`.
+          - The `surreal` CLI is on PATH (verified by verify_surreal).
+          - Tests spawn ephemeral `surreal start memory` servers on
+            random ports via `surreal_ephemeral` — DO NOT touch the
+            host's dev DB at 127.0.0.1:6480.
+          - `project/py/data/{mmh/,cjk-decomp.json}` is committed and
+            readable. Plan 09's Task 2 adds `moe_4808.txt` +
+            `LICENSE-moe-4808` via an explicit curl step in Task 2.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 09, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 9 is the last committed task and the
+             `plan-09-bulk-extraction` tag is applied, output
+             **exactly** the single word `COMPLETE` on its own line
+             and exit.
+        4. Implement every step exactly as written in the plan.
+           Follow TDD: failing test first → verify it fails →
+           implement → verify it passes.
+        5. Run the verification command shown in the task. All tests
+           (new + existing) MUST pass before commit.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 9's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - Task 2 Step 1 downloads moe_4808.txt via curl from
+          raw.githubusercontent.com/Watermelonnn/ChineseUsefulToolKit/...
+          If the download fails (network / upstream gone), BLOCK
+          with `BLOCKED: moe_4808.txt download failed` — do not
+          substitute a different list. The committed file must be
+          the upstream MoE 4808.
+        - **Never run `olik extract auto` / `olik db sync` against
+          http://127.0.0.1:6480** — that's the host's dev DB. The
+          CLI smoke tests in `tests/test_cli_extract.py` use the
+          `surreal_ephemeral` fixture and point at a random port.
+        - **Task 9 Step 2 (full pytest run)** is the workflow's
+          stand-in for an end-to-end smoke. Do not run `task
+          extract:batch-500` inside the worktree — the PR body calls
+          that out as a manual post-merge step by the reviewer.
+        - If the Python `surrealdb` package surfaces an API
+          difference (e.g. `db.query()` return shape), adjust the
+          sink helpers minimally and document the adjustment in the
+          plan's "Adjustments after execution" section with a
+          one-line note.
+        - If the ephemeral surreal fixture's port picker races (tests
+          fail with "address in use"), retry the failing test once.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 12
+      idle_timeout: 1800000
+
+  # --------------------------------------------------------------------------
+  # 6. Python test suite.
+  # --------------------------------------------------------------------------
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 7. TS test suite (regression — no Plan 09 changes under project/ts/).
+  # --------------------------------------------------------------------------
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -20
+
+  # --------------------------------------------------------------------------
+  # 8. Workspace typecheck + build.
+  # --------------------------------------------------------------------------
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -20
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 9. Auto-approve on py + ts tests green + typecheck + tag applied.
+  #    Variable refs use underscores so Archon's template interpolator
+  #    parses them cleanly (fixes the Plan 08 noise).
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Plan 09 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-09-bulk-extraction"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -5
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -8
+      echo ""
+
+      py_ok=0
+      ts_ok=0
+      tc_ok=0
+      tag_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if git tag -l "plan-09-bulk-extraction" | grep -q plan-09; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 10. Open the PR.
+  # --------------------------------------------------------------------------
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request
+      against `main`. Use `gh pr create`.
+
+      Title: `Plan 09: Bulk extraction pipeline — olik_font.bulk + olik extract auto/report/list/retry/backfill-status`
+
+      Body:
+        - 1-line summary: auto-planning bulk extraction pipeline
+          reading MoE 4808 + cjk-decomp + MMH, reuse-first prototype
+          policy with IoU-triggered context variant fallback, four-
+          value status enum persisted on every glyph row, new
+          variant_of graph edge for variant lineage.
+        - Commit list: `git log --oneline main..HEAD`.
+        - Python + TS test counts.
+        - Tag: `plan-09-bulk-extraction`.
+        - **Action required post-merge**: the workflow did NOT run
+          `task extract:batch-500` against the host DB (would
+          consume 500 buckets + write live data). A reviewer must
+          run manually after merging:
+          ```
+          task db:up          # idempotent
+          task extract:backfill   # set status on the 4 seed rows
+          task extract:batch-100  # smoke first
+          task extract:report
+          # then when happy
+          task extract:batch-500
+          ```
+        - Links: spec
+          (vault/specs/2026-04-21-bulk-extraction-design.md), plan
+          (vault/plans/2026-04-21-09-bulk-extraction.md), Plan 08
+          predecessor.
+
+      Output the final PR URL on the last line.
+    idle_timeout: 300000
