@@ -135,36 +135,35 @@ nodes:
       echo "total tests: $total"
 
   # --------------------------------------------------------------------------
-  # 5. Summary + human approval gate. Shows commits + test count, waits for
-  #    APPROVED before opening the PR.
+  # 5. Auto-approval gate. Conditional on run-tests passing. Emits a short
+  #    summary for the PR body, but does NOT pause for human input. See the
+  #    archon-workflows skill for why: interactive approve gates hit a
+  #    zombie-"running" state if the CLI process is interrupted (SIGPIPE /
+  #    SIGINT mid-transition), and there's no rollback. Judgment review is
+  #    delegated to the post-PR `codex-review-worktree` workflow instead.
   # --------------------------------------------------------------------------
   - id: approve
     depends_on: [run-tests]
-    loop:
-      prompt: |
-        Plan 02 implementation is complete. Present a summary to the
-        reviewer:
-
-        1. Run `git log --oneline main..HEAD` and list the commits.
-        2. Run `git diff main..HEAD --stat` and include the top-level
-           stat summary.
-        3. Report the total test count from the previous `run-tests` node
-           (it was `$run-tests.output` — extract the last line).
-        4. Note any deviations from the plan that you (or prior iterations)
-           discovered — these are candidates for an "Adjustments after
-           execution" entry in the plan.
-
-        After presenting, stop and wait for the reviewer to respond.
-        If they request fixes, address them in new commits, then
-        re-present the updated summary. If they type `APPROVED`, exit.
-      gate_message: |
-        Plan 02 is implemented and tests pass. Review the summary above.
-        Reply with `APPROVED` to open the PR, or describe specific fixes
-        you want applied first.
-      until: APPROVED
-      interactive: true
-      max_iterations: 20
-      idle_timeout: 0  # no timeout; human-paced
+    bash: |
+      set -e
+      echo "## Plan 02 summary"
+      echo ""
+      echo "### Commits on this branch"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Diffstat"
+      git diff main..HEAD --stat | tail -20
+      echo ""
+      echo "### Tests"
+      echo "$run-tests.output" | tail -5
+      echo ""
+      # Auto-approve iff run-tests reported a "N passed" line AND no failures.
+      if echo "$run-tests.output" | grep -qE '[0-9]+ passed' && ! echo "$run-tests.output" | grep -qE '[1-9][0-9]* failed'; then
+        echo "VERDICT: AUTO-APPROVED (tests green)"
+      else
+        echo "VERDICT: REJECTED (run-tests did not pass cleanly)"
+        exit 1
+      fi
 
   # --------------------------------------------------------------------------
   # 6. Open the PR. No force-push, no rebasing (per D21).
