@@ -75,10 +75,14 @@ prototypes:
       top: [512, 0]
       bottom: [512, 1024]
 
+  # 國's stroke order is NOT "囗 first, 或 second". MMH writes the
+  # enclosure's open top/sides first, then the inner 或, then closes the
+  # box last — so 囗 is strokes [0,1,10] and 或 is [2..9], not [0,1,2]
+  # and [3..10].
   - id: proto:enclosure_box
     name: "囗"
     from_char: "國"
-    stroke_indices: [0, 1, 2]
+    stroke_indices: [0, 1, 10]
     roles: [meaning]
     anchors:
       center: [512, 512]
@@ -88,7 +92,7 @@ prototypes:
   - id: proto:huo
     name: "或"
     from_char: "國"
-    stroke_indices: [3, 4, 5, 6, 7, 8, 9, 10]
+    stroke_indices: [2, 3, 4, 5, 6, 7, 8, 9]
     roles: [sound]
     anchors:
       center: [512, 512]
