@@ -28,8 +28,9 @@ SVG_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
   <g stroke="#eef2ff" stroke-width="1" fill="none">
     {grid}
   </g>
-  <!-- outline fills + median centerlines, animCJK idiom -->
-  <g>
+  <!-- outline fills + median centerlines, animCJK idiom.
+       MMH strokes are y-up; flip to SVG y-down so glyphs read right-side up. -->
+  <g transform="translate(0,{h}) scale(1,-1)">
     {strokes}
   </g>
   <g font-family="monospace" font-size="28" fill="#64748b">

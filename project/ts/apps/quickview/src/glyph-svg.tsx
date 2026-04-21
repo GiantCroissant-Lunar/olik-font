@@ -25,7 +25,8 @@ export const GlyphSvg: React.FC<Props> = ({ record, size = 480 }) => {
           <line key={`h${y}`} x1={0} y1={y} x2={w} y2={y} />
         ))}
       </g>
-      <g>
+      {/* MMH strokes are y-up; flip to SVG y-down. */}
+      <g transform={`translate(0,${h}) scale(1,-1)`}>
         {record.stroke_instances.map((s) => (
           <React.Fragment key={s.id}>
             {/* outline fill */}
