@@ -48,3 +48,6 @@ preview/
 
 # TypeScript incremental build cache
 project/ts/**/tsconfig.tsbuildinfo
+
+# SurrealDB persistent data (surrealkv backend — hanfont/olik)
+infra/surrealdb/data/
