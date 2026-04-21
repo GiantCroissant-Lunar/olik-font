@@ -58,6 +58,41 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     db_export = db_sub.add_parser("export", help="dump DB back to JSON")
     db_export.add_argument("--out", required=True, type=Path)
 
+    ext = subparsers.add_parser("extract", help="bulk auto-extraction pipeline")
+    ext_sub = ext.add_subparsers(dest="ext_cmd", required=True)
+
+    ext_auto = ext_sub.add_parser("auto", help="pick random empty buckets and extract them")
+    ext_auto.add_argument("--count", type=int, required=True)
+    ext_auto.add_argument("--seed", type=int, default=42)
+    ext_auto.add_argument("--iou-gate", type=float, default=0.90)
+    ext_auto.add_argument("--max-variants-per-proto", type=int, default=2)
+    ext_auto.add_argument("--dry-run", action="store_true")
+
+    ext_sub.add_parser("report", help="print status breakdown")
+
+    ext_back = ext_sub.add_parser(
+        "backfill-status",
+        help="set status on pre-Plan-09 rows",
+    )
+    ext_back.add_argument("--iou-gate", type=float, default=0.90)
+
+    ext_list = ext_sub.add_parser("list", help="print chars in a status bucket")
+    ext_list.add_argument(
+        "--status",
+        required=True,
+        choices=["verified", "needs_review", "unsupported_op", "failed_extraction"],
+    )
+    ext_list.add_argument("--limit", type=int, default=50)
+
+    ext_retry = ext_sub.add_parser("retry", help="re-extract chars in a status bucket")
+    ext_retry.add_argument(
+        "--status",
+        required=True,
+        choices=["unsupported_op", "needs_review", "failed_extraction"],
+    )
+    ext_retry.add_argument("--iou-gate", type=float, default=0.90)
+    ext_retry.add_argument("--max-variants-per-proto", type=int, default=2)
+
     return parser.parse_args(argv)
 
 
@@ -304,6 +339,149 @@ def _cmd_db_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_extract_auto(args: argparse.Namespace) -> int:
+    from olik_font.bulk.batch import run_batch
+    from olik_font.bulk.status import Status
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    report = run_batch(
+        db=db,
+        count=args.count,
+        seed=args.seed,
+        iou_gate=args.iou_gate,
+        cap=args.max_variants_per_proto,
+        dry_run=args.dry_run,
+    )
+    print(f"selected {report.selected} buckets (seed={report.seed})")
+    for status in Status:
+        print(f"  {status.value:20s} {report.counts[status]}")
+    return 0
+
+
+def _cmd_extract_report(_args: argparse.Namespace) -> int:
+    from olik_font.bulk.charlist import load_moe_4808
+    from olik_font.bulk.status import Status
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    total_pool = len(load_moe_4808())
+    filled_rows = _query_rows(db.query("SELECT count() AS count FROM glyph GROUP ALL;"))
+    n_filled = int(filled_rows[0]["count"]) if filled_rows else 0
+    print(f"filled {n_filled} / {total_pool}")
+
+    grouped_rows = _query_rows(
+        db.query("SELECT status, count() AS count FROM glyph GROUP BY status ORDER BY status;")
+    )
+    counts = {str(row.get("status") or ""): int(row.get("count", 0)) for row in grouped_rows}
+    for status in Status:
+        print(f"  {status.value:20s} {counts.get(status.value, 0)}")
+
+    ops = _query_rows(
+        db.query(
+            "SELECT missing_op, count() AS count FROM glyph "
+            "WHERE status = 'unsupported_op' GROUP BY missing_op;"
+        )
+    )
+    if ops:
+        print("unsupported-op histogram:")
+        for row in ops:
+            print(f"  {row['missing_op']:10s} {row['count']}")
+    return 0
+
+
+def _cmd_extract_backfill(args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    gate = args.iou_gate
+    db.query(
+        "UPDATE glyph SET status = 'verified' "
+        "WHERE (status = NONE OR status = '') AND iou_mean >= $g;",
+        {"g": gate},
+    )
+    db.query(
+        "UPDATE glyph SET status = 'needs_review' "
+        "WHERE (status = NONE OR status = '') AND iou_mean < $g AND iou_mean > 0;",
+        {"g": gate},
+    )
+    return 0
+
+
+def _cmd_extract_list(args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    rows = _query_rows(
+        db.query(
+            "SELECT char, iou_mean, missing_op, extraction_error "
+            "FROM glyph WHERE status = $s ORDER BY char LIMIT $n;",
+            {"s": args.status, "n": args.limit},
+        )
+    )
+    for row in rows:
+        extra = ""
+        if args.status == "unsupported_op" and row.get("missing_op"):
+            extra = f"  ({row['missing_op']})"
+        elif args.status == "failed_extraction" and row.get("extraction_error"):
+            extra = f"  ({row['extraction_error']})"
+        elif args.status == "needs_review" and row.get("iou_mean") is not None:
+            extra = f"  (iou={row['iou_mean']:.3f})"
+        print(f"{row['char']}{extra}")
+    return 0
+
+
+def _cmd_extract_retry(args: argparse.Namespace) -> int:
+    import olik_font.bulk.batch as batch_mod
+    from olik_font.bulk import charlist as cl
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    rows = _query_rows(
+        db.query(
+            "SELECT char FROM glyph WHERE status = $s;",
+            {"s": args.status},
+        )
+    )
+    chars = [row["char"] for row in rows]
+    if not chars:
+        print(f"no chars with status = {args.status}")
+        return 0
+    for ch in chars:
+        db.query("DELETE FROM glyph WHERE char = $c;", {"c": ch})
+
+    orig_pool = cl.load_moe_4808
+    orig_batch_pool = batch_mod.load_moe_4808
+    cl.load_moe_4808 = lambda path=None: chars
+    batch_mod.load_moe_4808 = lambda path=None: chars
+    try:
+        report = batch_mod.run_batch(
+            db=db,
+            count=len(chars),
+            seed=0,
+            iou_gate=args.iou_gate,
+            cap=args.max_variants_per_proto,
+        )
+    finally:
+        cl.load_moe_4808 = orig_pool
+        batch_mod.load_moe_4808 = orig_batch_pool
+
+    print(f"retried {report.selected} chars")
+    for status, count in report.counts.items():
+        print(f"  {status.value:20s} {count}")
+    return 0
+
+
 def _query_rows(payload: object) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         if payload and isinstance(payload[0], dict) and "result" in payload[0]:
@@ -416,6 +594,17 @@ def main() -> int:
             return _cmd_db_reset(args)
         if args.db_cmd == "export":
             return _cmd_db_export(args)
+    if args.cmd == "extract":
+        if args.ext_cmd == "auto":
+            return _cmd_extract_auto(args)
+        if args.ext_cmd == "report":
+            return _cmd_extract_report(args)
+        if args.ext_cmd == "backfill-status":
+            return _cmd_extract_backfill(args)
+        if args.ext_cmd == "list":
+            return _cmd_extract_list(args)
+        if args.ext_cmd == "retry":
+            return _cmd_extract_retry(args)
     print(f"unknown cmd: {args.cmd}", file=sys.stderr)
     return 2
 

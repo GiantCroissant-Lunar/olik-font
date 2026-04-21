@@ -4,7 +4,7 @@ created: 2026-04-21
 tags: [type/plan, topic/scene-graph, topic/extraction]
 source: self
 spec: "[[2026-04-21-bulk-extraction-design]]"
-status: draft
+status: complete
 phase: 9
 depends-on:
   - "[[2026-04-21-03-python-compose-cli]]"
@@ -1843,3 +1843,5 @@ git tag -a plan-09-bulk-extraction \
 ## Adjustments after execution
 
 _Notes on LUT surprises (unexpected op frequencies), prototype-id slug collisions, MMH stroke-count mismatches, or test-harness flakiness found during implementation._
+
+- SurrealDB 3.0.4 in this environment rejects `type::thing(...)`; Task 6 used `type::record(...)` in sink/test queries instead.

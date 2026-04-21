@@ -5,6 +5,7 @@ from __future__ import annotations
 import socket
 import subprocess
 import time
+import uuid
 from collections.abc import Generator
 
 import pytest
@@ -20,8 +21,8 @@ def _pick_port() -> int:
 
 
 @pytest.fixture(scope="session")
-def surreal_ephemeral() -> Generator[DbConfig, None, None]:
-    """Start an in-memory SurrealDB on a random port for the test session."""
+def _surreal_ephemeral_server() -> Generator[tuple[str, str, str], None, None]:
+    """Start one in-memory SurrealDB process for the test session."""
     port = _pick_port()
     proc = subprocess.Popen(
         [
@@ -38,17 +39,21 @@ def surreal_ephemeral() -> Generator[DbConfig, None, None]:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    cfg = DbConfig(
-        url=f"http://127.0.0.1:{port}",
-        namespace="hanfont",
-        database="olik_test",
-        user="root",
-        password="root",
-    )
+    url = f"http://127.0.0.1:{port}"
+    user = "root"
+    password = "root"
     deadline = time.time() + 10
     while time.time() < deadline:
         try:
-            connect(cfg)
+            connect(
+                DbConfig(
+                    url=url,
+                    namespace="hanfont",
+                    database="bootstrap",
+                    user=user,
+                    password=password,
+                )
+            )
             break
         except Exception:
             time.sleep(0.1)
@@ -57,7 +62,20 @@ def surreal_ephemeral() -> Generator[DbConfig, None, None]:
         raise RuntimeError("ephemeral surrealdb did not become reachable")
 
     try:
-        yield cfg
+        yield (url, user, password)
     finally:
         proc.terminate()
         proc.wait(timeout=5)
+
+
+@pytest.fixture
+def surreal_ephemeral(_surreal_ephemeral_server: tuple[str, str, str]) -> DbConfig:
+    """Provide an isolated namespace/database pair for each test."""
+    url, user, password = _surreal_ephemeral_server
+    return DbConfig(
+        url=url,
+        namespace="hanfont",
+        database=f"olik_test_{uuid.uuid4().hex}",
+        user=user,
+        password=password,
+    )

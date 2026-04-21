@@ -239,6 +239,26 @@ tasks:
         "{{.VENV}}/bin/olik" db export --out "$dir"
         echo "wrote $dir"
 
+  extract:batch-100:
+    desc: Auto-extract 100 random empty buckets (smoke run)
+    cmds:
+      - "{{.VENV}}/bin/olik extract auto --count 100 --seed 42"
+
+  extract:batch-500:
+    desc: Auto-extract 500 random empty buckets (Plan 09 target)
+    cmds:
+      - "{{.VENV}}/bin/olik extract auto --count 500 --seed 42"
+
+  extract:report:
+    desc: Print status breakdown
+    cmds:
+      - "{{.VENV}}/bin/olik extract report"
+
+  extract:backfill:
+    desc: Set status on pre-Plan-09 rows (one-shot after first deploy)
+    cmds:
+      - "{{.VENV}}/bin/olik extract backfill-status --iou-gate 0.90"
+
   # ─── Housekeeping ──────────────────────────────────────────────────────
   clean:
     desc: Remove venv, node_modules, pytest caches, dist dirs
