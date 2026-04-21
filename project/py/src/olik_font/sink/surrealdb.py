@@ -56,3 +56,56 @@ def upsert_glyph(db: Surreal, record: dict[str, Any]) -> None:
                 },
             },
         )
+
+
+def upsert_rules(db: Surreal, rules: list[dict[str, Any]]) -> None:
+    """Idempotent write of the rule catalog."""
+    for rule in rules:
+        db.query(
+            "UPSERT type::record('rule', $key) MERGE $data;",
+            {"key": rule["id"], "data": rule},
+        )
+
+
+def upsert_rule_trace(
+    db: Surreal,
+    glyph_char: str,
+    trace: list[dict[str, Any]],
+) -> None:
+    """Rewrite the rule_trace log and `cites` edges for one glyph."""
+    glyph_ref = _record_ref("glyph", glyph_char)
+
+    db.query(
+        "BEGIN TRANSACTION;"
+        "DELETE rule_trace WHERE glyph = <record>$glyph;"
+        "DELETE cites WHERE in = <record>$glyph;"
+        "COMMIT TRANSACTION;",
+        {"glyph": glyph_ref},
+    )
+
+    for entry in trace:
+        rule_ref = _record_ref("rule", entry["rule_id"])
+        db.query(
+            "CREATE rule_trace SET "
+            "glyph = <record>$glyph, "
+            "rule = <record>$rule, "
+            "fired = $fired, "
+            "order = $order, "
+            "alternative = $alternative;",
+            {
+                "glyph": glyph_ref,
+                "rule": rule_ref,
+                "fired": entry["fired"],
+                "order": entry["order"],
+                "alternative": entry.get("alternative", False),
+            },
+        )
+        db.query(
+            f"RELATE {glyph_ref}->cites->{rule_ref} CONTENT $edge;",
+            {
+                "edge": {
+                    "order": entry["order"],
+                    "alternative": entry.get("alternative", False),
+                }
+            },
+        )
