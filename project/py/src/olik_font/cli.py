@@ -58,6 +58,24 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     db_export = db_sub.add_parser("export", help="dump DB back to JSON")
     db_export.add_argument("--out", required=True, type=Path)
 
+    ext = subparsers.add_parser("extract", help="bulk auto-extraction pipeline")
+    ext_sub = ext.add_subparsers(dest="ext_cmd", required=True)
+
+    ext_auto = ext_sub.add_parser("auto", help="pick random empty buckets and extract them")
+    ext_auto.add_argument("--count", type=int, required=True)
+    ext_auto.add_argument("--seed", type=int, default=42)
+    ext_auto.add_argument("--iou-gate", type=float, default=0.90)
+    ext_auto.add_argument("--max-variants-per-proto", type=int, default=2)
+    ext_auto.add_argument("--dry-run", action="store_true")
+
+    ext_sub.add_parser("report", help="print status breakdown")
+
+    ext_back = ext_sub.add_parser(
+        "backfill-status",
+        help="set status on pre-Plan-09 rows",
+    )
+    ext_back.add_argument("--iou-gate", type=float, default=0.90)
+
     return parser.parse_args(argv)
 
 
@@ -304,6 +322,91 @@ def _cmd_db_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_extract_auto(args: argparse.Namespace) -> int:
+    from olik_font.bulk.batch import run_batch
+    from olik_font.bulk.status import Status
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    report = run_batch(
+        db=db,
+        count=args.count,
+        seed=args.seed,
+        iou_gate=args.iou_gate,
+        cap=args.max_variants_per_proto,
+        dry_run=args.dry_run,
+    )
+    print(f"selected {report.selected} buckets (seed={report.seed})")
+    for status in Status:
+        print(f"  {status.value:20s} {report.counts[status]}")
+    return 0
+
+
+def _cmd_extract_report(_args: argparse.Namespace) -> int:
+    from olik_font.bulk.charlist import load_moe_4808
+    from olik_font.bulk.status import Status
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    total_pool = len(load_moe_4808())
+    filled_rows = _query_rows(db.query("SELECT count() AS count FROM glyph GROUP ALL;"))
+    n_filled = int(filled_rows[0]["count"]) if filled_rows else 0
+    print(f"filled {n_filled} / {total_pool}")
+
+    grouped_rows = _query_rows(
+        db.query("SELECT status, count() AS count FROM glyph GROUP BY status ORDER BY status;")
+    )
+    counts = {str(row.get("status") or ""): int(row.get("count", 0)) for row in grouped_rows}
+    for status in Status:
+        print(f"  {status.value:20s} {counts.get(status.value, 0)}")
+
+    ops = _query_rows(
+        db.query(
+            "SELECT missing_op, count() AS count FROM glyph "
+            "WHERE status = 'unsupported_op' GROUP BY missing_op;"
+        )
+    )
+    if ops:
+        print("unsupported-op histogram:")
+        for row in ops:
+            print(f"  {row['missing_op']:10s} {row['count']}")
+    return 0
+
+
+def _cmd_extract_backfill(args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    gate = args.iou_gate
+    db.query(
+        "UPDATE glyph SET status = 'verified' "
+        "WHERE (status = NONE OR status = '') AND iou_mean >= $g;",
+        {"g": gate},
+    )
+    db.query(
+        "UPDATE glyph SET status = 'needs_review' "
+        "WHERE (status = NONE OR status = '') AND iou_mean < $g AND iou_mean > 0;",
+        {"g": gate},
+    )
+    return 0
+
+
+def _cmd_extract_list(_args: argparse.Namespace) -> int:
+    print("extract list is not wired yet", file=sys.stderr)
+    return 2
+
+
+def _cmd_extract_retry(_args: argparse.Namespace) -> int:
+    print("extract retry is not wired yet", file=sys.stderr)
+    return 2
+
+
 def _query_rows(payload: object) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         if payload and isinstance(payload[0], dict) and "result" in payload[0]:
@@ -416,6 +519,17 @@ def main() -> int:
             return _cmd_db_reset(args)
         if args.db_cmd == "export":
             return _cmd_db_export(args)
+    if args.cmd == "extract":
+        if args.ext_cmd == "auto":
+            return _cmd_extract_auto(args)
+        if args.ext_cmd == "report":
+            return _cmd_extract_report(args)
+        if args.ext_cmd == "backfill-status":
+            return _cmd_extract_backfill(args)
+        if args.ext_cmd == "list":
+            return _cmd_extract_list(args)
+        if args.ext_cmd == "retry":
+            return _cmd_extract_retry(args)
     print(f"unknown cmd: {args.cmd}", file=sys.stderr)
     return 2
 
