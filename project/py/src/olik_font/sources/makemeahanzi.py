@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import requests
+
 
 @dataclass(frozen=True, slots=True)
 class MmhChar:
@@ -70,3 +72,33 @@ def load_mmh_dictionary(path: Path) -> dict[str, MmhDictEntry]:
                 matches=list(obj.get("matches", [])),
             )
     return out
+
+
+MMH_GRAPHICS_URL = (
+    "https://raw.githubusercontent.com/skishore/makemeahanzi/master/graphics.txt"
+)
+MMH_DICTIONARY_URL = (
+    "https://raw.githubusercontent.com/skishore/makemeahanzi/master/dictionary.txt"
+)
+
+
+def _http_get(url: str) -> bytes:
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
+def fetch_mmh(cache_dir: Path) -> tuple[Path, Path]:
+    """Ensure graphics.txt and dictionary.txt exist in cache_dir.
+
+    Returns (graphics_path, dictionary_path). Downloads from upstream only when
+    a target file is missing; re-running with a warm cache is a no-op.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    graphics = cache_dir / "graphics.txt"
+    dictionary = cache_dir / "dictionary.txt"
+    if not graphics.exists():
+        graphics.write_bytes(_http_get(MMH_GRAPHICS_URL))
+    if not dictionary.exists():
+        dictionary.write_bytes(_http_get(MMH_DICTIONARY_URL))
+    return graphics, dictionary
