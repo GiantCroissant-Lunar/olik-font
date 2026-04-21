@@ -1,0 +1,28 @@
+{
+  "name": "@olik/remotion-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio",
+    "build": "remotion render Storyboard out/storyboard.mp4",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@olik/glyph-loader": "workspace:*",
+    "@olik/glyph-schema": "workspace:*",
+    "@olik/glyph-viz": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.228",
+    "@remotion/cli": "4.0.228",
+    "@remotion/bundler": "4.0.228"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.2"
+  }
+}
