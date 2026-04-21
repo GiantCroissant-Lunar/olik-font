@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://olik-font/schema/glyph-record.schema.json",
+  "title": "Glyph Record",
+  "type": "object",
+  "required": [
+    "schema_version", "glyph_id", "coord_space", "layout_tree",
+    "component_instances", "stroke_instances", "constraints",
+    "render_layers", "roles", "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$" },
+    "glyph_id":       { "type": "string", "minLength": 1 },
+    "unicode":        { "type": "string", "pattern": "^U\\+[0-9A-F]{4,6}$" },
+    "coord_space":    { "$ref": "#/$defs/coord_space" },
+    "source":         { "type": "object" },
+    "layout_tree":    { "$ref": "#/$defs/node" },
+    "component_instances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/component_instance" }
+    },
+    "stroke_instances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/stroke_instance" }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/constraint" }
+    },
+    "render_layers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/render_layer" }
+    },
+    "roles": { "type": "object" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "generated_at": { "type": "string" },
+        "generator":    { "type": "string" },
+        "iou_report": {
+          "type": "object",
+          "properties": {
+            "mean": { "type": "number" },
+            "min":  { "type": "number" },
+            "per_stroke": { "type": "object" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "coord_space": {
+      "type": "object",
+      "required": ["width", "height", "origin", "y_axis"],
+      "properties": {
+        "width":  { "type": "integer", "const": 1024 },
+        "height": { "type": "integer", "const": 1024 },
+        "origin": { "type": "string", "enum": ["top-left"] },
+        "y_axis": { "type": "string", "enum": ["down"] }
+      },
+      "additionalProperties": false
+    },
+    "bbox": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "point": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "affine": {
+      "type": "object",
+      "required": ["translate", "scale", "rotate", "shear"],
+      "additionalProperties": false,
+      "properties": {
+        "translate": { "$ref": "#/$defs/point" },
+        "scale":     { "$ref": "#/$defs/point" },
+        "rotate":    { "type": "number" },
+        "shear":     { "$ref": "#/$defs/point" }
+      }
+    },
+    "anchor_binding": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from":     { "type": "string" },
+        "to":       { "type": "string" },
+        "distance": { "type": "number" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "bbox"],
+      "additionalProperties": false,
+      "properties": {
+        "id":            { "type": "string" },
+        "prototype_ref": { "type": "string", "pattern": "^proto:[A-Za-z0-9_]+$" },
+        "bbox":          { "$ref": "#/$defs/bbox" },
+        "mode":          { "type": "string", "enum": ["keep","refine","replace"] },
+        "depth":         { "type": "integer", "minimum": 0 },
+        "transform":     { "$ref": "#/$defs/affine" },
+        "anchor_bindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/anchor_binding" }
+        },
+        "decomp_source": { "type": "object" },
+        "input_adapter": { "type": "string" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "component_instance": {
+      "type": "object",
+      "required": ["id", "prototype_ref", "transform"],
+      "additionalProperties": false,
+      "properties": {
+        "id":            { "type": "string" },
+        "prototype_ref": { "type": "string", "pattern": "^proto:[A-Za-z0-9_]+$" },
+        "transform":     { "$ref": "#/$defs/affine" },
+        "placed_bbox":   { "$ref": "#/$defs/bbox" },
+        "style_slots":   { "type": "object" }
+      }
+    },
+    "stroke_instance": {
+      "type": "object",
+      "required": ["id", "instance_id", "order", "path", "median", "bbox", "z", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "id":          { "type": "string" },
+        "instance_id": { "type": "string" },
+        "order":       { "type": "integer", "minimum": 0 },
+        "path":        { "type": "string" },
+        "median":      { "type": "array", "items": { "$ref": "#/$defs/point" } },
+        "bbox":        { "$ref": "#/$defs/bbox" },
+        "z":           { "type": "integer", "minimum": 0, "maximum": 99 },
+        "role":        { "type": "string" }
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["align_x","align_y","order_x","order_y","anchor_distance","inside","avoid_overlap","repeat"]
+        }
+      }
+    },
+    "render_layer": {
+      "type": "object",
+      "required": ["name", "z_min", "z_max"],
+      "additionalProperties": false,
+      "properties": {
+        "name":  { "type": "string" },
+        "z_min": { "type": "integer", "minimum": 0, "maximum": 99 },
+        "z_max": { "type": "integer", "minimum": 0, "maximum": 99 }
+      }
+    }
+  }
+}

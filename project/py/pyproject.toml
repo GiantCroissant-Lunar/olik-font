@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "olik-font"
+version = "0.1.0"
+description = "Glyph scene graph — pass-1 implementation"
+requires-python = ">=3.11"
+dependencies = [
+  "pyyaml>=6.0",
+  "jsonschema>=4.21",
+  "requests>=2.31",
+  "svgpathtools>=1.6",
+  "shapely>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+]
+
+[project.scripts]
+olik = "olik_font.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/olik_font"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"

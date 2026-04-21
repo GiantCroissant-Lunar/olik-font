@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "coord_space": { "width": 1024, "height": 1024, "origin": "top-left", "y_axis": "down" },
+  "prototypes": {
+    "proto:hello": {
+      "id": "proto:hello",
+      "name": "hello",
+      "kind": "component",
+      "canonical_bbox": [0, 0, 1024, 1024],
+      "strokes": [
+        {
+          "id": "s0",
+          "path": "M 0 512 L 1024 512",
+          "median": [[0, 512], [1024, 512]],
+          "order": 0,
+          "role": "horizontal"
+        }
+      ],
+      "anchors": {
+        "center": [512, 512],
+        "left_edge": [0, 512],
+        "right_edge": [1024, 512]
+      },
+      "roles": ["meaning"],
+      "refinement": { "mode": "keep", "alternates": [] }
+    }
+  },
+  "edges": []
+}

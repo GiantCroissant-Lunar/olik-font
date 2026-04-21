@@ -10,3 +10,19 @@
 
 # Per-developer agent overlay — each dev maintains their own, treat like .env
 AGENTS.md
+
+# pass-1 additions
+.worktrees/
+project/py/data/
+!project/py/data/.gitkeep
+project/py/.pytest_cache/
+project/py/**/__pycache__/
+project/py/src/*.egg-info/
+project/py/htmlcov/
+project/py/.coverage
+project/ts/node_modules/
+project/ts/**/node_modules/
+project/ts/**/dist/
+project/ts/**/.turbo/
+project/ts/**/.next/
+project/py/.venv/

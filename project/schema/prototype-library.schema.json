@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://olik-font/schema/prototype-library.schema.json",
+  "title": "Prototype Library",
+  "type": "object",
+  "required": ["schema_version", "coord_space", "prototypes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)?$" },
+    "coord_space": { "$ref": "#/$defs/coord_space" },
+    "prototypes": {
+      "type": "object",
+      "patternProperties": {
+        "^proto:[A-Za-z0-9_]+$": { "$ref": "#/$defs/prototype" }
+      },
+      "additionalProperties": false
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "coord_space": {
+      "type": "object",
+      "required": ["width", "height", "origin", "y_axis"],
+      "properties": {
+        "width":  { "type": "integer", "const": 1024 },
+        "height": { "type": "integer", "const": 1024 },
+        "origin": { "type": "string", "enum": ["top-left"] },
+        "y_axis": { "type": "string", "enum": ["down"] }
+      },
+      "additionalProperties": false
+    },
+    "bbox": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "point": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "stroke": {
+      "type": "object",
+      "required": ["id", "path", "median", "order", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "id":     { "type": "string" },
+        "path":   { "type": "string" },
+        "median": { "type": "array", "items": { "$ref": "#/$defs/point" } },
+        "order":  { "type": "integer", "minimum": 0 },
+        "role":   { "type": "string", "enum": ["horizontal","vertical","dot","hook","slash","backslash","fold","other"] }
+      }
+    },
+    "prototype": {
+      "type": "object",
+      "required": ["id", "name", "kind", "canonical_bbox", "strokes", "anchors", "refinement"],
+      "additionalProperties": false,
+      "properties": {
+        "id":   { "type": "string", "pattern": "^proto:[A-Za-z0-9_]+$" },
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["component","stroke","group"] },
+        "source": { "type": "object" },
+        "canonical_bbox": { "$ref": "#/$defs/bbox" },
+        "strokes": { "type": "array", "items": { "$ref": "#/$defs/stroke" } },
+        "anchors": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/point" }
+        },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["meaning","sound","iconic","distinguishing","unknown"] }
+        },
+        "refinement": {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode":       { "type": "string", "enum": ["keep","refine","replace"] },
+            "alternates": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "kind", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string" },
+        "kind": { "type": "string", "enum": ["refines-to","replaces"] },
+        "to":   { "type": "string" }
+      }
+    }
+  }
+}
