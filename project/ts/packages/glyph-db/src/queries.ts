@@ -86,14 +86,40 @@ export function makeQueries(raw: Surreal): OlikDb {
         .collect<[GlyphSummary[]]>();
       return rows;
     },
-    async listVariants(_char: string): Promise<StyleVariant[]> {
-      return [];
+    async listVariants(char: string): Promise<StyleVariant[]> {
+      const [rows = []] = await raw
+        .query<StyleVariant[]>(
+          "SELECT char, style_name, image_ref, workflow_id, status, generated_at "
+            + "FROM style_variant WHERE char = $c ORDER BY generated_at;",
+          { c: char },
+        )
+        .collect<[StyleVariant[]]>();
+      return rows;
     },
     async subscribeVariants(
-      _char: string,
-      _cb: (v: StyleVariant) => void,
+      char: string,
+      cb: (v: StyleVariant) => void,
     ): Promise<Unsubscribe> {
-      return async () => {};
+      const [liveId] = await raw
+        .query<[string]>(
+          "LIVE SELECT * FROM style_variant WHERE char = $c;",
+          { c: char },
+        )
+        .collect<[string]>();
+      const live = await raw.liveOf(liveId);
+      const unsubscribe = live.subscribe((message) => {
+        if (message.action === "CREATE" || message.action === "UPDATE") {
+          cb(message.value as StyleVariant);
+        }
+      });
+      return async () => {
+        unsubscribe();
+        try {
+          await live.kill();
+        } catch {
+          // connection may already be closed
+        }
+      };
     },
     async close(): Promise<void> {
       await raw.close();
