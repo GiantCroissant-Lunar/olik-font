@@ -1,4 +1,4 @@
-import type { Surreal } from "surrealdb";
+import { Uuid, type Surreal } from "surrealdb";
 
 import type { GlyphRecord } from "@olik/glyph-schema";
 import type { OlikDb } from "./client.js";
@@ -10,6 +10,8 @@ import type {
   PrototypeSummary,
   StyleVariant,
 } from "./types.js";
+
+type GlyphSortField = NonNullable<ListOpts["sort"]>;
 
 function buildListQuery(opts: ListOpts | undefined) {
   const clauses: string[] = [];
@@ -30,7 +32,7 @@ function buildListQuery(opts: ListOpts | undefined) {
   }
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
-  const sortField = opts?.sort ?? "char";
+  const sortField: GlyphSortField = opts?.sort ?? "char";
   const limit = opts?.pageSize ?? 50;
   let cursorClause = "";
   if (opts?.cursor !== undefined) {
@@ -58,8 +60,9 @@ export function makeQueries(raw: Surreal): OlikDb {
         .collect<[GlyphSummary[]]>();
       const hasMore = rows.length > limit;
       const items = hasMore ? rows.slice(0, limit) : rows;
+      const lastItem = items[items.length - 1];
       const nextCursor = hasMore
-        ? String((items[items.length - 1] as Record<string, unknown>)[sortField])
+        ? String(lastItem[sortField])
         : undefined;
       return { items, nextCursor };
     },
@@ -106,10 +109,13 @@ export function makeQueries(raw: Surreal): OlikDb {
           { c: char },
         )
         .collect<[string]>();
-      const live = await raw.liveOf(liveId);
+      if (liveId === undefined) {
+        throw new Error("LIVE SELECT did not return a subscription id");
+      }
+      const live = await raw.liveOf(new Uuid(liveId));
       const unsubscribe = live.subscribe((message) => {
         if (message.action === "CREATE" || message.action === "UPDATE") {
-          cb(message.value as StyleVariant);
+          cb(message.value as unknown as StyleVariant);
         }
       });
       return async () => {

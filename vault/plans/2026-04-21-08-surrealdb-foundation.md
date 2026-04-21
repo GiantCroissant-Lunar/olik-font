@@ -4,7 +4,7 @@ created: 2026-04-21
 tags: [type/plan, topic/scene-graph, topic/surrealdb]
 source: self
 spec: "[[2026-04-21-surrealdb-foundation-design]]"
-status: draft
+status: complete
 phase: 8
 depends-on:
   - "[[2026-04-21-03-python-compose-cli]]"

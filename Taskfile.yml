@@ -195,6 +195,50 @@ tasks:
         done
       - open preview/*.svg 2>/dev/null || echo "previews written to preview/*.svg"
 
+  db:up:
+    desc: Start the persistent SurrealDB (surrealkv://infra/surrealdb/data) if not running
+    cmds:
+      - |
+        if lsof -ti:6480 >/dev/null 2>&1; then
+          echo "already listening on 6480"
+        else
+          mkdir -p infra/surrealdb/data
+          nohup surreal start --user root --pass root --bind 0.0.0.0:6480 \
+            "surrealkv://$(pwd)/infra/surrealdb/data" \
+            > /tmp/surrealdb.log 2>&1 &
+          echo "started PID $!"
+        fi
+
+  db:down:
+    desc: Stop whichever surreal process is on :6480
+    cmds:
+      - |
+        pid=$(lsof -ti:6480 2>/dev/null || true)
+        if [ -n "$pid" ]; then kill "$pid" && echo "stopped $pid"; else echo "nothing on 6480"; fi
+
+  db:reset:
+    desc: Wipe the persistent DB directory and re-seed
+    deps: [db:down]
+    cmds:
+      - rm -rf infra/surrealdb/data/*
+      - task: db:up
+      - "{{.VENV}}/bin/olik db reset --yes"
+      - task: db:seed
+
+  db:seed:
+    desc: Populate hanfont/olik with the 4 seed chars
+    cmds:
+      - "{{.VENV}}/bin/olik db sync 明 清 國 森"
+
+  db:export:
+    desc: Dump hanfont/olik back to JSON under infra/surrealdb/snapshots/<date>
+    cmds:
+      - |
+        dir="infra/surrealdb/snapshots/$(date +%Y-%m-%d)"
+        mkdir -p "$dir"
+        "{{.VENV}}/bin/olik" db export --out "$dir"
+        echo "wrote $dir"
+
   # ─── Housekeeping ──────────────────────────────────────────────────────
   clean:
     desc: Remove venv, node_modules, pytest caches, dist dirs
