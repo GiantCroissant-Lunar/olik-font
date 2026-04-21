@@ -10,9 +10,12 @@ from __future__ import annotations
 from dataclasses import replace
 
 from olik_font.constraints.primitives import (
+    AlignX,
     AlignY,
     AnchorDistance,
+    Inside,
     OrderX,
+    OrderY,
     Primitive,
 )
 from olik_font.geom import bbox_to_bbox_affine
@@ -48,3 +51,56 @@ def apply_left_right(
         ),
     )
     return left_out, right_out, constraints
+
+
+def apply_top_bottom(
+    top: InstancePlacement,
+    bottom: InstancePlacement,
+    glyph_bbox: BBox,
+    weight_top: float = 0.49,
+    gap: float = 20.0,
+) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
+    gx0, gy0, gx1, gy1 = glyph_bbox
+    height = gy1 - gy0
+    split_y = gy0 + height * weight_top
+
+    top_bbox: BBox = (gx0, gy0, gx1, split_y)
+    bottom_bbox: BBox = (gx0, split_y + gap, gx1, gy1)
+
+    top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_bbox))
+    bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_bbox))
+
+    constraints: tuple[Primitive, ...] = (
+        AlignX(targets=(f"{top.instance_id}.center", f"{bottom.instance_id}.center")),
+        OrderY(above=top.instance_id, below=bottom.instance_id),
+        AnchorDistance(
+            from_=f"{top.instance_id}.bottom",
+            to=f"{bottom.instance_id}.top",
+            value=gap,
+        ),
+    )
+    return top_out, bottom_out, constraints
+
+
+def apply_enclose(
+    outer: InstancePlacement,
+    inner: InstancePlacement,
+    glyph_bbox: BBox,
+    padding: float = 100.0,
+) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
+    outer_bbox = glyph_bbox
+    inner_bbox: BBox = (
+        glyph_bbox[0] + padding,
+        glyph_bbox[1] + padding,
+        glyph_bbox[2] - padding,
+        glyph_bbox[3] - padding,
+    )
+    outer_out = replace(outer, transform=bbox_to_bbox_affine(CANONICAL, outer_bbox))
+    inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_bbox))
+
+    constraints: tuple[Primitive, ...] = (
+        Inside(target=inner.instance_id, frame=outer.instance_id, padding=padding),
+        AlignX(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
+        AlignY(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
+    )
+    return outer_out, inner_out, constraints
