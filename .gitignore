@@ -51,3 +51,5 @@ project/ts/**/tsconfig.tsbuildinfo
 
 # SurrealDB persistent data (surrealkv backend — hanfont/olik)
 infra/surrealdb/data/
+# Local DB → JSON snapshots from `task db:export`
+infra/surrealdb/snapshots/
