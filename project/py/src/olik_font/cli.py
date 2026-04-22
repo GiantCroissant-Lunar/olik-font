@@ -20,6 +20,7 @@ from olik_font.prototypes.extract import extract_all_prototypes
 from olik_font.prototypes.extraction_plan import load_extraction_plan
 from olik_font.rules.engine import RuleSet, apply_first_match, load_rules
 from olik_font.sources.makemeahanzi import fetch_mmh, load_mmh_dictionary, load_mmh_graphics
+from olik_font.styling import ComfyUIClient, stylize
 from olik_font.types import PrototypeLibrary
 
 _PY_ROOT = Path(__file__).resolve().parents[2]
@@ -92,6 +93,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     ext_retry.add_argument("--iou-gate", type=float, default=0.90)
     ext_retry.add_argument("--max-variants-per-proto", type=int, default=2)
+
+    style = subparsers.add_parser("style", help="batch stylize glyph records via ComfyUI")
+    style.add_argument("chars", nargs="+")
+    style.add_argument("--styles", required=True)
+    style.add_argument("--seeds", type=int, default=1)
+    style.add_argument("--out", required=True, type=Path)
 
     return parser.parse_args(argv)
 
@@ -482,6 +489,23 @@ def _cmd_extract_retry(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_style(args: argparse.Namespace) -> int:
+    styles = [style.strip() for style in args.styles.split(",") if style.strip()]
+    report = stylize(
+        chars=args.chars,
+        styles=styles,
+        out_dir=args.out,
+        seeds_per_style=args.seeds,
+        client=ComfyUIClient(),
+    )
+    print(
+        "styled "
+        f"requested={report.requested} generated={report.generated} "
+        f"skipped={report.skipped} failed={report.failed}"
+    )
+    return 0 if report.failed == 0 else 1
+
+
 def _query_rows(payload: object) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         if payload and isinstance(payload[0], dict) and "result" in payload[0]:
@@ -605,6 +629,8 @@ def main() -> int:
             return _cmd_extract_list(args)
         if args.ext_cmd == "retry":
             return _cmd_extract_retry(args)
+    if args.cmd == "style":
+        return _cmd_style(args)
     print(f"unknown cmd: {args.cmd}", file=sys.stderr)
     return 2
 
