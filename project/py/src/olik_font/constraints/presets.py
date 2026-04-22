@@ -243,8 +243,9 @@ def apply_repeat_triangle(
     ]
 
     resolved: list[InstancePlacement] = []
-    for inst, bbox in zip(instances, positions, strict=False):
-        resolved.append(replace(inst, transform=bbox_to_bbox_affine(CANONICAL, bbox)))
+    for inst, slot in zip(instances, positions, strict=False):
+        target = fit_in_slot(CANONICAL, slot, "center")
+        resolved.append(replace(inst, transform=bbox_to_bbox_affine(CANONICAL, target)))
 
     constraints: list[Primitive] = [
         Repeat(prototype_ref=instances[0].prototype_ref, count=3, layout_hint="triangle"),
