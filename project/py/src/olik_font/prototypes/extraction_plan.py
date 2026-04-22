@@ -2,7 +2,7 @@
 
 Hand-authored plan declares:
   - which MMH strokes belong to which prototype
-  - per-glyph composition tree (preset + children + mode choices)
+  - per-glyph composition tree (children + mode choices)
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from typing import Literal
 
 import yaml
 
-Preset = Literal["left_right", "top_bottom", "enclose", "repeat_triangle"]
 Mode = Literal["keep", "refine", "replace"]
 
 
@@ -31,16 +30,13 @@ class PrototypePlan:
 class GlyphNodePlan:
     prototype_ref: str
     mode: Mode = "keep"
-    preset: Preset | None = None
+    source_stroke_indices: tuple[int, ...] | None = None
     children: tuple[GlyphNodePlan, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class GlyphPlan:
-    preset: Preset
     children: tuple[GlyphNodePlan, ...] = ()
-    prototype_ref: str | None = None  # for repeat_triangle
-    count: int | None = None  # for repeat_triangle
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +54,9 @@ def _parse_node(obj: dict) -> GlyphNodePlan:
     return GlyphNodePlan(
         prototype_ref=obj["prototype_ref"],
         mode=obj.get("mode", "keep"),
-        preset=obj.get("preset"),
+        source_stroke_indices=(
+            tuple(obj["source_stroke_indices"]) if "source_stroke_indices" in obj else None
+        ),
         children=tuple(_parse_node(c) for c in obj.get("children", [])),
     )
 
@@ -82,10 +80,7 @@ def load_extraction_plan(path: Path) -> ExtractionPlan:
     glyphs: dict[str, GlyphPlan] = {}
     for char, g in raw.get("glyphs", {}).items():
         glyphs[char] = GlyphPlan(
-            preset=g["preset"],
             children=tuple(_parse_node(c) for c in g.get("children", [])),
-            prototype_ref=g.get("prototype_ref"),
-            count=g.get("count"),
         )
     return ExtractionPlan(
         schema_version=raw["schema_version"],

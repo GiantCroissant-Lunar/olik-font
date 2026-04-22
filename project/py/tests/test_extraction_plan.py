@@ -34,22 +34,22 @@ def test_prototype_plan_keeps_stroke_indices_as_tuple():
     assert sun.from_char == "明"
 
 
-def test_glyph_plan_for_senr_is_repeat_triangle():
+def test_glyph_plan_for_senr_expands_to_three_tree_children():
     plan = load_extraction_plan(PLAN)
     senr = plan.glyphs["森"]
     assert isinstance(senr, GlyphPlan)
-    assert senr.preset == "repeat_triangle"
-    assert senr.count == 3
+    assert len(senr.children) == 3
+    assert {child.prototype_ref for child in senr.children} == {"proto:tree"}
 
 
 def test_glyph_plan_refine_node_carries_children():
     plan = load_extraction_plan(PLAN)
     qing = plan.glyphs["清"]
     # root → [氵, 青]; 青 has mode=refine + its own children
-    assert qing.preset == "left_right"
+    assert len(qing.children) == 2
     right = qing.children[1]
     assert right.mode == "refine"
-    assert right.preset == "top_bottom"
+    assert right.source_stroke_indices is None
     assert len(right.children) == 2
 
 

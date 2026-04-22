@@ -111,7 +111,6 @@ prototypes:
 
 glyphs:
   明:
-    preset: left_right
     children:
       - prototype_ref: proto:sun
         mode: keep
@@ -119,13 +118,11 @@ glyphs:
         mode: keep
 
   清:
-    preset: left_right
     children:
       - prototype_ref: proto:water_3dots
         mode: keep
       - prototype_ref: proto:qing
         mode: refine
-        preset: top_bottom
         children:
           - prototype_ref: proto:sheng_in_qing
             mode: keep
@@ -133,7 +130,6 @@ glyphs:
             mode: keep
 
   國:
-    preset: enclose
     children:
       - prototype_ref: proto:enclosure_box
         mode: keep
@@ -141,6 +137,10 @@ glyphs:
         mode: keep
 
   森:
-    preset: repeat_triangle
-    prototype_ref: proto:tree
-    count: 3
+    children:
+      - prototype_ref: proto:tree
+        mode: keep
+      - prototype_ref: proto:tree
+        mode: keep
+      - prototype_ref: proto:tree
+        mode: keep
