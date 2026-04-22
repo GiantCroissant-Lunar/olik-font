@@ -1,0 +1,361 @@
+name: plan-09.2-variant-extraction
+description: >-
+  Execute Plan 09.2 (variant extraction correctness). Adds
+  olik_font.bulk.variant_match (Hungarian bbox-IoU matcher), replaces
+  _trivial_probe_iou with a real canonical probe, enables the variant
+  branch in plan_char to mint proto:u<hex>_in_<context> prototypes with
+  matched stroke indices, writes variant_of edges, and adds
+  variants_minted + canonical_probe_rejections counters on
+  extraction_run. Refactor: presets.slot_bbox helper deduplicates the
+  y-up bbox math between renderers and the matcher. Scipy is a new
+  Python dep. All DB interactions use the ephemeral surreal_ephemeral
+  fixture — the host's dev DB is never touched.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Python venv install. Plan 09.2 adds scipy as a declared dependency
+  #    in Task 1; reinstall editable so the new dep resolves from
+  #    pyproject.toml after the loop's first commit.
+  # --------------------------------------------------------------------------
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+      # scipy may already be present transitively — verify the import path
+      # we use is reachable.
+      .venv/bin/python -c "from scipy.optimize import linear_sum_assignment; print('scipy ok')"
+
+  # --------------------------------------------------------------------------
+  # 2. Verify the `surreal` CLI is on PATH so the ephemeral fixture can
+  #    spawn it. Same check as Plans 08 and 09.
+  # --------------------------------------------------------------------------
+  - id: verify_surreal
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: surreal CLI not on PATH."
+        echo "Install with: brew install surrealdb/tap/surreal"
+        exit 1
+      fi
+      surreal --version
+      echo "surreal CLI ready."
+
+  # --------------------------------------------------------------------------
+  # 3. TS workspace install — regression-only (Plan 09.2 has no TS changes,
+  #    but the approve gate runs pnpm -r test to catch inadvertent breakage).
+  # --------------------------------------------------------------------------
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  # --------------------------------------------------------------------------
+  # 4. Prebuild workspace packages so later typecheck/test nodes resolve.
+  # --------------------------------------------------------------------------
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+      for pkg in glyph-schema glyph-loader glyph-viz glyph-db; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING $pkg dist"; exit 1)
+      done
+      echo "All 4 workspace packages built."
+
+  # --------------------------------------------------------------------------
+  # 5. Implementation loop. Plan 09.2 has 9 tasks (scipy dep, slot_bbox
+  #    helper refactor, variant_match module, decide_prototype signature,
+  #    plan_char variant branch, real probe closure, extraction_run
+  #    counters, integration smoke, and e2e + handover).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify_surreal, prebuild_ts]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 09.2 (variant extraction
+        correctness) task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-22-09.2-variant-extraction.md`.
+        Spec:       `vault/specs/2026-04-22-variant-extraction-design.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit
+        whose message is spelled out in the plan.
+
+        Plans 01–09 (and Plan 09.1 follow-ups) are merged on main.
+        In particular:
+          - Plan 09 gave us `olik_font.bulk/` (charlist, ops, planner,
+            reuse, batch, status), four CLI verbs under `olik extract`,
+            the `variant_of` edge table, and the `extraction_run`
+            provenance row shape.
+          - Plan 09.1 corrected canonical prototype extraction (use the
+            component's own standalone MMH entry) and fixed y-up bbox
+            semantics in `apply_top_bottom` / `apply_repeat_triangle`.
+          - The `surreal` CLI is on PATH (verified by verify_surreal).
+          - Tests spawn ephemeral `surreal start memory` servers on
+            random ports via `surreal_ephemeral` — DO NOT touch the
+            host's dev DB at 127.0.0.1:6480.
+          - `_trivial_probe_iou` in `bulk/batch.py` currently returns
+            1.0 unconditionally; Plan 09.2's Task 6 replaces it.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 09.2, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 9 is the last committed task and the
+             `plan-09.2-variant-extraction` tag is applied, output
+             **exactly** the single word `COMPLETE` on its own line
+             and exit.
+        4. Implement every step exactly as written in the plan.
+           Follow TDD: failing test first → verify it fails →
+           implement → verify it passes.
+        5. Run the verification command shown in the task. All tests
+           (new + existing) MUST pass before commit.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 9's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - Task 1 declares `scipy>=1.11` in pyproject.toml. After the
+          commit, `pip install -e .` should be a no-op (scipy is
+          already present in the venv from earlier transitively) —
+          if it reports a fresh install that's fine too.
+        - **Never run `olik extract auto` / `olik db sync` /
+          `olik extract retry` against http://127.0.0.1:6480** — that
+          is the host's dev developer DB with ~122 real glyph rows.
+          The unit + integration tests all use `surreal_ephemeral`
+          which points at a random port.
+        - **Task 9 (end-to-end verification)** is a MANUAL post-merge
+          task by the reviewer — NOT run inside this loop. When the
+          loop reaches Task 9, apply the `plan-09.2-variant-extraction`
+          tag after Task 8's commit and output `COMPLETE`. Task 9's
+          checklist entries (task db:reset, olik extract auto --count
+          100, handover note) are reviewer actions after merge, not
+          part of the workflow.
+        - If the ephemeral surreal fixture's port picker races (tests
+          fail with "address in use"), retry the failing test once.
+        - If scipy's `linear_sum_assignment` returns numpy arrays with
+          an unexpected dtype, cast via `int(i)` / `int(j)` when
+          building `StrokePair` records (already done in the plan's
+          Task 3 reference implementation — preserve that cast).
+
+        ## Applying the tag at Task 8/end-of-loop
+
+        After the final in-loop commit (Task 8's smoke test), apply
+        the tag:
+
+        ```
+        git tag plan-09.2-variant-extraction
+        ```
+
+        Then output `COMPLETE` on its own line.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 12
+      idle_timeout: 1800000
+
+  # --------------------------------------------------------------------------
+  # 6. Python test suite. Expected ~158 passed + 1 xfailed after Plan 09.2
+  #    (baseline 138+1 plus ~20 new tests across variant_match,
+  #    slot_bbox, planner variant paths, reuse signature, and bulk smoke).
+  # --------------------------------------------------------------------------
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 7. TS test suite (regression — no Plan 09.2 changes under project/ts/).
+  # --------------------------------------------------------------------------
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -20
+
+  # --------------------------------------------------------------------------
+  # 8. Workspace typecheck + build.
+  # --------------------------------------------------------------------------
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -20
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 9. Auto-approve on py + ts tests green + typecheck + tag applied.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Plan 09.2 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-09.2-variant-extraction"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -5
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -8
+      echo ""
+
+      py_ok=0
+      ts_ok=0
+      tc_ok=0
+      tag_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if git tag -l "plan-09.2-variant-extraction" | grep -q plan-09.2; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 10. Open the PR.
+  #
+  #     SAFETY FIX (handover-2026-04-22 §"Archon workflow create_pr is
+  #     unsafe"): Plan 09's create_pr used inline `--body` with a heredoc
+  #     whose markdown code blocks contained backticks. Codex shell-
+  #     interpolated those backticks as command substitution and executed
+  #     `task extract:backfill` + `task extract:batch-100` +
+  #     `task extract:batch-500` against the HOST DB, writing ~969
+  #     failed_extraction rows before catching itself.
+  #
+  #     This version REQUIRES Codex to write the body to a temp file
+  #     first and pass it via `--body-file`. No inline heredoc. No
+  #     backtick-bearing shell substitution.
+  # --------------------------------------------------------------------------
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request
+      against `main`. Use `gh pr create`.
+
+      ## SAFETY: body must go to a temp file, NOT inline
+
+      You MUST follow this exact pattern — do NOT use inline `--body`
+      with a heredoc, do NOT use command substitution inside the body
+      argument. Markdown code blocks in the PR body contain backticks,
+      and inline heredocs have caused prior workflows to shell-
+      interpolate them and execute destructive commands against the
+      host SurrealDB. Always:
+
+      1. Write the body text to `/tmp/pr-body-plan-09.2.md` using a
+         plain file write (the editor tool, or a single-line python
+         one-liner with the full body as a string literal — NOT a
+         bash heredoc).
+      2. Call `gh pr create --title "..." --body-file /tmp/pr-body-plan-09.2.md`.
+      3. Delete the temp file after the PR URL is captured.
+
+      ## Title
+
+      `Plan 09.2: Variant extraction correctness — IoU-per-stroke Hungarian matcher + real canonical probe`
+
+      ## Body content (write verbatim to the temp file)
+
+      The body is a normal markdown document. It WILL contain backticks
+      and triple-backtick code fences — that is why it goes to a file,
+      not an inline shell argument. Include:
+
+      - One-line summary: replaces `_trivial_probe_iou` with a real
+        bbox-IoU Hungarian probe (new `olik_font.bulk.variant_match`),
+        enables the variant branch in `plan_char` to mint
+        `proto:u<hex>_in_<context>` prototypes carrying matched stroke
+        indices, writes `variant_of` edges, and adds
+        `variants_minted` + `canonical_probe_rejections` counters on
+        `extraction_run`.
+      - Commit list: output of `git log --oneline main..HEAD`.
+      - Python + TS test counts (tail of the run_py and run_ts
+        outputs).
+      - Tag: `plan-09.2-variant-extraction`.
+      - New Python dep: `scipy>=1.11` in `project/py/pyproject.toml`.
+        The dev venv already had scipy transitively; this declares it
+        as a direct dep.
+      - **Action required post-merge** (manual — the workflow did NOT
+        run these): reset and re-batch against the host DB to measure
+        the verified lift. The reviewer runs these by hand after
+        merging:
+
+        ```
+        cd /Users/apprenticegc/Work/lunar-horse/plate-projects/olik-font
+        task db:up
+        task db:reset
+        project/py/.venv/bin/olik db sync 明 清 國 森
+        project/py/.venv/bin/olik extract auto --count 100 --seed 7
+        project/py/.venv/bin/olik extract report
+        ```
+
+        Expected: verified ~30-50%, needs_review ~15-25%, variants
+        minted > 0. If numbers fall below expected, open a Plan 09.3
+        issue rather than re-tuning gates.
+      - Links:
+        - Spec: `vault/specs/2026-04-22-variant-extraction-design.md`
+        - Plan: `vault/plans/2026-04-22-09.2-variant-extraction.md`
+        - Predecessor: Plan 09 (#9), Plan 09.1 follow-ups.
+
+      ## Output
+
+      After `gh pr create` succeeds, output the final PR URL on the
+      last line of your response.
+    idle_timeout: 300000
