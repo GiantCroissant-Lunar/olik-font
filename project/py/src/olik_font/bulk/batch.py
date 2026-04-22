@@ -128,7 +128,11 @@ def _finalize_extraction_run(db, run_id: str, report: BatchReport) -> None:
         "};",
         {
             "id": run_id,
-            "counts": {status.value: report.counts[status] for status in Status},
+            "counts": {
+                **{status.value: report.counts[status] for status in Status},
+                "variants_minted": report.variants_minted,
+                "canonical_probe_rejections": report.canonical_probe_rejections,
+            },
             "chars": report.selected_chars,
             "variants": report.variants_minted,
             "rejections": report.canonical_probe_rejections,
