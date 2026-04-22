@@ -13,6 +13,43 @@ export const STATUS_VALUES: readonly Status[] = [
   "failed_extraction",
 ] as const;
 
+export interface ReviewUpdate {
+  newStatus: Status;
+  reviewNote?: string | null;
+  reviewedBy?: string;
+}
+
+export class InvalidTransition extends Error {
+  constructor(public readonly from: Status, public readonly to: Status) {
+    super(`invalid status transition: ${from} -> ${to}`);
+    this.name = "InvalidTransition";
+  }
+}
+
+/**
+ * Mirrors `olik_font.bulk.status.Status.VALID_TRANSITIONS` semantics.
+ * Plan 09.1 permits every transition; Plan 10's UI only issues
+ * `needs_review -> verified|failed_extraction`, but client-side
+ * enforcement is strict so future UI paths can't silently regress.
+ * Self-transitions are included so idempotent writes don't throw.
+ */
+export const VALID_TRANSITIONS: Record<Status, ReadonlySet<Status>> = {
+  verified: new Set(["verified", "needs_review", "failed_extraction"]),
+  needs_review: new Set(["verified", "needs_review", "failed_extraction"]),
+  unsupported_op: new Set([
+    "verified",
+    "needs_review",
+    "failed_extraction",
+    "unsupported_op",
+  ]),
+  failed_extraction: new Set([
+    "verified",
+    "needs_review",
+    "failed_extraction",
+    "unsupported_op",
+  ]),
+};
+
 export interface GlyphSummary {
   char: string;
   stroke_count: number;
