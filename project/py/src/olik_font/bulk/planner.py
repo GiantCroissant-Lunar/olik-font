@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from olik_font.bulk import variant_match
 from olik_font.bulk.ops import resolve_mode
 from olik_font.bulk.reuse import ProtoIndex, decide_prototype
+from olik_font.constraints.presets import slot_bbox
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
 
 
@@ -36,19 +38,9 @@ def _extract_canonical_prototype(
     mmh: dict,
 ) -> PrototypePlan:
     """Extract a canonical prototype from the component's OWN standalone
-    MMH entry.
+    MMH entry (Plan 09.1 correctness fix).
 
-    This is the correctness-critical step: a prototype meant to represent
-    the component `component_name` must derive its strokes from MMH's
-    standalone entry for `component_name`, not from some context char's
-    strokes. MMH's `matches` field (which could have told us which
-    strokes of a context char belong to which component) is uniformly
-    null across all 9574 entries, so standalone extraction is the only
-    reliable path.
-
-    Raises RuntimeError if `component_name` has no MMH entry — the
-    caller converts this to `PlanFailed`, leaving the glyph as a stub
-    row rather than composing it with wrong stroke data.
+    Raises RuntimeError if `component_name` has no MMH entry.
     """
     mmh_entry = mmh.get(component_name)
     if mmh_entry is None:
@@ -64,12 +56,52 @@ def _extract_canonical_prototype(
     )
 
 
+def _extract_variant_prototype(
+    component_name: str,
+    context_char: str,
+    proto_id: str,
+    preset: str,
+    n_components: int,
+    slot_idx: int,
+    mmh: dict,
+) -> tuple[PrototypePlan, variant_match.MatchResult]:
+    """Run Hungarian matching and mint a variant PrototypePlan.
+
+    Returns (prototype, match). Caller inspects `match.k_gt_m` and
+    `match.below_floor` to decide PlanFailed vs PlanOk.
+    """
+    canonical_strokes = mmh[component_name]["strokes"]
+    context_strokes = mmh[context_char]["strokes"]
+    slot = slot_bbox(preset, n_components, slot_idx)
+    match = variant_match.match_in_slot(canonical_strokes, context_strokes, slot)
+    if match.k_gt_m or match.below_floor:
+        placeholder = PrototypePlan(
+            id=proto_id,
+            name=component_name,
+            from_char=context_char,
+            stroke_indices=(),
+            roles=("meaning",),
+            anchors={},
+        )
+        return placeholder, match
+    indices = tuple(p.context_idx for p in match.pairs)
+    variant = PrototypePlan(
+        id=proto_id,
+        name=component_name,
+        from_char=context_char,
+        stroke_indices=indices,
+        roles=("meaning",),
+        anchors={},
+    )
+    return variant, match
+
+
 def plan_char(
     char: str,
     cjk_entry: dict,
     mmh: dict,
     index: ProtoIndex,
-    probe_iou: Callable[[PrototypePlan], float],
+    probe_iou: Callable[[str, str, str, int, int], float],
     gate: float,
     cap: int,
 ) -> PlanResult:
@@ -86,14 +118,19 @@ def plan_char(
     if len(components) == 0:
         return PlanFailed(reason="cjk-decomp has no components")
 
+    n = len(components)
     new_protos: list[PrototypePlan] = []
     variant_edges: list[tuple[str, str]] = []
     child_nodes: list[GlyphNodePlan] = []
+    minted_variant_ids: set[str] = set()
 
-    for _i, comp_name in enumerate(components):
+    for i, comp_name in enumerate(components):
         decision = decide_prototype(
             component_char=comp_name,
             context_char=char,
+            preset=mode,
+            n_components=n,
+            slot_idx=i,
             index=index,
             probe_iou=probe_iou,
             gate=gate,
@@ -109,19 +146,38 @@ def plan_char(
                 return PlanFailed(reason=str(exc))
             new_protos.append(proto)
         elif decision.is_new_variant:
-            # Correct variant extraction needs MMH's `matches` field
-            # (per-stroke component assignment) — which is null for all
-            # 9574 MMH entries. Without it we have no reliable way to
-            # isolate a component's strokes inside a context char. Rather
-            # than mint a variant with wrong strokes, fail out and let
-            # the glyph land in `needs_review`; a later plan can add
-            # IoU-per-stroke matching for proper variant extraction.
-            return PlanFailed(
-                reason=(
-                    f"canonical proto for {comp_name} fails IoU and MMH "
-                    "lacks per-stroke matches for variant extraction"
+            if decision.chosen_id in minted_variant_ids:
+                pass
+            else:
+                if comp_name not in mmh:
+                    return PlanFailed(reason=f"variant mint needs MMH entry for {comp_name}")
+                variant, match = _extract_variant_prototype(
+                    component_name=comp_name,
+                    context_char=char,
+                    proto_id=decision.chosen_id,
+                    preset=mode,
+                    n_components=n,
+                    slot_idx=i,
+                    mmh=mmh,
                 )
-            )
+                if match.k_gt_m:
+                    return PlanFailed(
+                        reason=(
+                            f"k_gt_m: canonical {comp_name} has more strokes "
+                            f"than context {char} offers"
+                        )
+                    )
+                if match.below_floor:
+                    return PlanFailed(
+                        reason=(
+                            f"match floor: best pairing for {comp_name} in "
+                            f"{char} has min_iou={match.min_iou:.3f}"
+                        )
+                    )
+                new_protos.append(variant)
+                if decision.canonical_for_edge is not None:
+                    variant_edges.append((variant.id, decision.canonical_for_edge))
+                minted_variant_ids.add(decision.chosen_id)
 
         child_nodes.append(GlyphNodePlan(prototype_ref=decision.chosen_id, mode="keep"))
 

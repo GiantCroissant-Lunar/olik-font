@@ -22,6 +22,113 @@ from olik_font.geom import bbox_to_bbox_affine
 from olik_font.types import BBox, InstancePlacement
 
 CANONICAL: BBox = (0.0, 0.0, 1024.0, 1024.0)
+_LEFT_RIGHT_WEIGHT_L = 400.0 / 1024.0
+_LEFT_RIGHT_GAP = 20.0
+_TOP_BOTTOM_WEIGHT_TOP = 0.49
+_TOP_BOTTOM_GAP = 20.0
+_ENCLOSE_PADDING = 100.0
+_REPEAT_TRIANGLE_SCALE = 0.5
+
+
+def _slot_bbox_left_right(
+    slot_idx: int,
+    glyph_bbox: BBox,
+    *,
+    weight_l: float = _LEFT_RIGHT_WEIGHT_L,
+    gap: float = _LEFT_RIGHT_GAP,
+) -> BBox:
+    gx0, gy0, gx1, gy1 = glyph_bbox
+    width = gx1 - gx0
+    split_x = gx0 + width * weight_l
+    if slot_idx == 0:
+        return (gx0, gy0, split_x, gy1)
+    if slot_idx == 1:
+        return (split_x + gap, gy0, gx1, gy1)
+    raise ValueError(f"slot_idx {slot_idx} out of range for left_right (0..1)")
+
+
+def _slot_bbox_top_bottom(
+    slot_idx: int,
+    glyph_bbox: BBox,
+    *,
+    weight_top: float = _TOP_BOTTOM_WEIGHT_TOP,
+    gap: float = _TOP_BOTTOM_GAP,
+) -> BBox:
+    # y-up: VISUAL TOP sits at HIGH y, VISUAL BOTTOM at LOW y.
+    # See apply_top_bottom docstring for the full explanation.
+    gx0, gy0, gx1, gy1 = glyph_bbox
+    height = gy1 - gy0
+    split_y = gy0 + height * (1.0 - weight_top)
+    if slot_idx == 0:
+        return (gx0, split_y + gap, gx1, gy1)
+    if slot_idx == 1:
+        return (gx0, gy0, gx1, split_y)
+    raise ValueError(f"slot_idx {slot_idx} out of range for top_bottom (0..1)")
+
+
+def _slot_bbox_enclose(
+    slot_idx: int,
+    glyph_bbox: BBox,
+    *,
+    padding: float = _ENCLOSE_PADDING,
+) -> BBox:
+    if slot_idx == 0:
+        return glyph_bbox
+    if slot_idx == 1:
+        gx0, gy0, gx1, gy1 = glyph_bbox
+        return (
+            gx0 + padding,
+            gy0 + padding,
+            gx1 - padding,
+            gy1 - padding,
+        )
+    raise ValueError(f"slot_idx {slot_idx} out of range for enclose (0..1)")
+
+
+def _slot_bbox_repeat_triangle(
+    slot_idx: int,
+    glyph_bbox: BBox,
+    *,
+    scale: float = _REPEAT_TRIANGLE_SCALE,
+) -> BBox:
+    # y-up: top-center at HIGH y; two bottom cells at LOW y.
+    gx0, gy0, gx1, gy1 = glyph_bbox
+    w = gx1 - gx0
+    h = gy1 - gy0
+    cell_w = w * scale
+    cell_h = h * scale
+    if slot_idx == 0:
+        return (gx0 + (w - cell_w) / 2.0, gy1 - cell_h, gx0 + (w + cell_w) / 2.0, gy1)
+    if slot_idx == 1:
+        return (gx0, gy0, gx0 + cell_w, gy0 + cell_h)
+    if slot_idx == 2:
+        return (gx1 - cell_w, gy0, gx1, gy0 + cell_h)
+    raise ValueError(f"slot_idx {slot_idx} out of range for repeat_triangle (0..2)")
+
+
+def slot_bbox(
+    preset: str,
+    n_components: int,
+    slot_idx: int,
+    glyph_bbox: BBox = CANONICAL,
+) -> BBox:
+    """Return the y-up bbox for component `slot_idx` in `preset`.
+
+    Shared helper used by both the renderers (apply_*) and the bulk
+    variant-matching pipeline (bulk.variant_match). Keeping the bbox
+    math in one place ensures the matcher's predicted slot matches
+    exactly where the renderer will place the strokes.
+    """
+    del n_components
+    if preset == "left_right":
+        return _slot_bbox_left_right(slot_idx, glyph_bbox)
+    if preset == "top_bottom":
+        return _slot_bbox_top_bottom(slot_idx, glyph_bbox)
+    if preset == "enclose":
+        return _slot_bbox_enclose(slot_idx, glyph_bbox)
+    if preset == "repeat_triangle":
+        return _slot_bbox_repeat_triangle(slot_idx, glyph_bbox)
+    raise ValueError(f"unknown preset: {preset!r}")
 
 
 def apply_left_right(
@@ -31,12 +138,8 @@ def apply_left_right(
     weight_l: float = 400.0 / 1024.0,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    gx0, gy0, gx1, gy1 = glyph_bbox
-    width = gx1 - gx0
-    split_x = gx0 + width * weight_l
-
-    left_bbox: BBox = (gx0, gy0, split_x, gy1)
-    right_bbox: BBox = (split_x + gap, gy0, gx1, gy1)
+    left_bbox = _slot_bbox_left_right(0, glyph_bbox, weight_l=weight_l, gap=gap)
+    right_bbox = _slot_bbox_left_right(1, glyph_bbox, weight_l=weight_l, gap=gap)
 
     left_out = replace(left, transform=bbox_to_bbox_affine(CANONICAL, left_bbox))
     right_out = replace(right, transform=bbox_to_bbox_affine(CANONICAL, right_bbox))
@@ -66,12 +169,8 @@ def apply_top_bottom(
     # space to y=0 in SVG space (visual top). Therefore the bbox for the
     # VISUAL TOP must sit at HIGH y values; the bbox for the VISUAL
     # BOTTOM at LOW y values.
-    gx0, gy0, gx1, gy1 = glyph_bbox
-    height = gy1 - gy0
-    split_y = gy0 + height * (1.0 - weight_top)
-
-    top_bbox: BBox = (gx0, split_y + gap, gx1, gy1)
-    bottom_bbox: BBox = (gx0, gy0, gx1, split_y)
+    top_bbox = _slot_bbox_top_bottom(0, glyph_bbox, weight_top=weight_top, gap=gap)
+    bottom_bbox = _slot_bbox_top_bottom(1, glyph_bbox, weight_top=weight_top, gap=gap)
 
     top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_bbox))
     bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_bbox))
@@ -94,13 +193,8 @@ def apply_enclose(
     glyph_bbox: BBox,
     padding: float = 100.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    outer_bbox = glyph_bbox
-    inner_bbox: BBox = (
-        glyph_bbox[0] + padding,
-        glyph_bbox[1] + padding,
-        glyph_bbox[2] - padding,
-        glyph_bbox[3] - padding,
-    )
+    outer_bbox = _slot_bbox_enclose(0, glyph_bbox, padding=padding)
+    inner_bbox = _slot_bbox_enclose(1, glyph_bbox, padding=padding)
     outer_out = replace(outer, transform=bbox_to_bbox_affine(CANONICAL, outer_bbox))
     inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_bbox))
 
@@ -124,23 +218,14 @@ def apply_repeat_triangle(
     if len(instances) != 3:
         raise ValueError(f"repeat_triangle requires 3 instances, got {len(instances)}")
 
-    gx0, gy0, gx1, gy1 = glyph_bbox
-    w = gx1 - gx0
-    h = gy1 - gy0
-    cell_w = w * scale
-    cell_h = h * scale
-
     # y-up convention (see apply_top_bottom): the visual TOP position
     # has high y; the two BOTTOM positions have low y. After the render-
     # time flip this becomes 1 instance at the visual top-center plus 2
     # instances at the visual bottom-left / bottom-right.
-    positions: list[BBox] = [
-        # top-center: high y range
-        (gx0 + (w - cell_w) / 2.0, gy1 - cell_h, gx0 + (w + cell_w) / 2.0, gy1),
-        # bottom-left: low y range
-        (gx0, gy0, gx0 + cell_w, gy0 + cell_h),
-        # bottom-right: low y range
-        (gx1 - cell_w, gy0, gx1, gy0 + cell_h),
+    positions = [
+        _slot_bbox_repeat_triangle(0, glyph_bbox, scale=scale),
+        _slot_bbox_repeat_triangle(1, glyph_bbox, scale=scale),
+        _slot_bbox_repeat_triangle(2, glyph_bbox, scale=scale),
     ]
 
     resolved: list[InstancePlacement] = []
