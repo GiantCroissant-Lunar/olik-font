@@ -53,11 +53,14 @@ def test_guo_enclose_resolves():
 
 
 def test_senr_repeat_triangle_resolves():
+    # y-up convention: visual top = high y, visual bottom = low y. A
+    # 森-style triangle has two instances near the bottom (low y) and
+    # one near the top (high y).
     plan = load_extraction_plan(PLAN)
     tree = build_instance_tree("森", plan)
     resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
     assert len(resolved.children) == 3
     centers = [apply_affine_to_point(c.transform, (512, 512)) for c in resolved.children]
     ys = sorted(c[1] for c in centers)
-    assert ys[0] < 400  # one near top
-    assert ys[1] > 500 and ys[2] > 500  # two near bottom
+    assert ys[0] < 400 and ys[1] < 400  # two near bottom (low y)
+    assert ys[2] > 500  # one near top (high y)

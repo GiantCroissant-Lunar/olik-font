@@ -191,17 +191,19 @@ def run_batch(
             report.add(Status.FAILED_EXTRACTION)
             continue
 
-        planner_mmh = (
-            {
-                ch: {
-                    "character": mmh[ch].character,
-                    "strokes": mmh[ch].strokes,
-                    "medians": mmh[ch].medians,
+        # planner.py needs standalone MMH entries for the char itself AND
+        # for every component named in the cjk-decomp decomposition,
+        # because canonical prototypes are extracted from the component's
+        # own standalone entry (Plan 09.1 correctness fix).
+        planner_mmh: dict[str, dict[str, Any]] = {}
+        needed = [ch, *entry.get("components", [])]
+        for key in needed:
+            if isinstance(key, str) and key in mmh:
+                planner_mmh[key] = {
+                    "character": mmh[key].character,
+                    "strokes": mmh[key].strokes,
+                    "medians": mmh[key].medians,
                 }
-            }
-            if ch in mmh
-            else {}
-        )
 
         result = plan_char(
             char=ch,

@@ -30,44 +30,35 @@ class PlanFailed:
 PlanResult = PlanOk | PlanUnsupported | PlanFailed
 
 
-def _stroke_range_for_component(
-    context_char: str,
-    component_index: int,
-    total_components: int,
-    mmh_strokes: int,
-) -> tuple[int, ...]:
-    """Assign a naive contiguous MMH stroke slice to one component."""
-    del context_char
-    size = mmh_strokes // total_components
-    start = component_index * size
-    end = mmh_strokes if component_index == total_components - 1 else start + size
-    return tuple(range(start, end))
-
-
-def _extract_new_prototype(
+def _extract_canonical_prototype(
     component_name: str,
     proto_id: str,
-    context_char: str,
-    index_in_context: int,
-    total_components: int,
     mmh: dict,
 ) -> PrototypePlan:
-    """Synthesize a prototype plan against the context char's MMH strokes."""
-    mmh_entry = mmh.get(context_char)
+    """Extract a canonical prototype from the component's OWN standalone
+    MMH entry.
+
+    This is the correctness-critical step: a prototype meant to represent
+    the component `component_name` must derive its strokes from MMH's
+    standalone entry for `component_name`, not from some context char's
+    strokes. MMH's `matches` field (which could have told us which
+    strokes of a context char belong to which component) is uniformly
+    null across all 9574 entries, so standalone extraction is the only
+    reliable path.
+
+    Raises RuntimeError if `component_name` has no MMH entry — the
+    caller converts this to `PlanFailed`, leaving the glyph as a stub
+    row rather than composing it with wrong stroke data.
+    """
+    mmh_entry = mmh.get(component_name)
     if mmh_entry is None:
-        raise RuntimeError(f"missing MMH entry for {context_char}")
+        raise RuntimeError(f"no standalone MMH entry for component '{component_name}'")
     stroke_count = len(mmh_entry["strokes"])
-    strokes = _stroke_range_for_component(
-        context_char,
-        index_in_context,
-        total_components,
-        stroke_count,
-    )
     return PrototypePlan(
         id=proto_id,
         name=component_name,
-        from_char=context_char,
-        stroke_indices=strokes,
+        from_char=component_name,
+        stroke_indices=tuple(range(stroke_count)),
         roles=("meaning",),
         anchors={},
     )
@@ -99,7 +90,7 @@ def plan_char(
     variant_edges: list[tuple[str, str]] = []
     child_nodes: list[GlyphNodePlan] = []
 
-    for i, comp_name in enumerate(components):
+    for _i, comp_name in enumerate(components):
         decision = decide_prototype(
             component_char=comp_name,
             context_char=char,
@@ -112,27 +103,25 @@ def plan_char(
             return PlanFailed(reason=f"variant cap exceeded for {comp_name}")
 
         if decision.is_new_canonical:
-            proto = _extract_new_prototype(
-                comp_name,
-                decision.chosen_id,
-                char,
-                i,
-                len(components),
-                mmh,
-            )
+            try:
+                proto = _extract_canonical_prototype(comp_name, decision.chosen_id, mmh)
+            except RuntimeError as exc:
+                return PlanFailed(reason=str(exc))
             new_protos.append(proto)
         elif decision.is_new_variant:
-            proto = _extract_new_prototype(
-                comp_name,
-                decision.chosen_id,
-                char,
-                i,
-                len(components),
-                mmh,
+            # Correct variant extraction needs MMH's `matches` field
+            # (per-stroke component assignment) — which is null for all
+            # 9574 MMH entries. Without it we have no reliable way to
+            # isolate a component's strokes inside a context char. Rather
+            # than mint a variant with wrong strokes, fail out and let
+            # the glyph land in `needs_review`; a later plan can add
+            # IoU-per-stroke matching for proper variant extraction.
+            return PlanFailed(
+                reason=(
+                    f"canonical proto for {comp_name} fails IoU and MMH "
+                    "lacks per-stroke matches for variant extraction"
+                )
             )
-            new_protos.append(proto)
-            assert decision.canonical_for_edge is not None
-            variant_edges.append((decision.chosen_id, decision.canonical_for_edge))
 
         child_nodes.append(GlyphNodePlan(prototype_ref=decision.chosen_id, mode="keep"))
 

@@ -10,24 +10,27 @@ def _leaf(iid):
 
 
 def test_three_instances_placed_at_triangle_vertices():
+    # y-up convention (see apply_top_bottom): visual top = high y,
+    # visual bottom = low y. Triangle vertices therefore have the
+    # top-center cell at y≈768 and the two bottom cells at y≈256.
     a, b, c = _leaf("inst:t1"), _leaf("inst:t2"), _leaf("inst:t3")
     resolved, _constraints = apply_repeat_triangle((a, b, c), glyph_bbox=(0, 0, 1024, 1024))
     assert len(resolved) == 3
 
-    # instance 0: top-center — canonical center (512, 512) maps to around (512, 256)
+    # instance 0: top-center — canonical center (512, 512) maps to around (512, 768)
     c0 = apply_affine_to_point(resolved[0].transform, (512.0, 512.0))
     assert abs(c0[0] - 512.0) < 1e-6
-    assert abs(c0[1] - 256.0) < 1e-6
+    assert abs(c0[1] - 768.0) < 1e-6
 
-    # instance 1: bottom-left — around (256, 768)
+    # instance 1: bottom-left — around (256, 256)
     c1 = apply_affine_to_point(resolved[1].transform, (512.0, 512.0))
     assert abs(c1[0] - 256.0) < 1e-6
-    assert abs(c1[1] - 768.0) < 1e-6
+    assert abs(c1[1] - 256.0) < 1e-6
 
-    # instance 2: bottom-right — around (768, 768)
+    # instance 2: bottom-right — around (768, 256)
     c2 = apply_affine_to_point(resolved[2].transform, (512.0, 512.0))
     assert abs(c2[0] - 768.0) < 1e-6
-    assert abs(c2[1] - 768.0) < 1e-6
+    assert abs(c2[1] - 256.0) < 1e-6
 
 
 def test_constraints_include_repeat_and_pairwise_avoid_overlap():

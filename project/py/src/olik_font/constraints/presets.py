@@ -60,12 +60,18 @@ def apply_top_bottom(
     weight_top: float = 0.49,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
+    # The rest of the pipeline uses MMH's y-up convention (y=0 bottom,
+    # y=1024 top). The render-time y-flip in renderers (preview-glyph.py,
+    # flow-nodes, quickview) depends on this: it maps y=1024 in compose
+    # space to y=0 in SVG space (visual top). Therefore the bbox for the
+    # VISUAL TOP must sit at HIGH y values; the bbox for the VISUAL
+    # BOTTOM at LOW y values.
     gx0, gy0, gx1, gy1 = glyph_bbox
     height = gy1 - gy0
-    split_y = gy0 + height * weight_top
+    split_y = gy0 + height * (1.0 - weight_top)
 
-    top_bbox: BBox = (gx0, gy0, gx1, split_y)
-    bottom_bbox: BBox = (gx0, split_y + gap, gx1, gy1)
+    top_bbox: BBox = (gx0, split_y + gap, gx1, gy1)
+    bottom_bbox: BBox = (gx0, gy0, gx1, split_y)
 
     top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_bbox))
     bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_bbox))
@@ -124,11 +130,17 @@ def apply_repeat_triangle(
     cell_w = w * scale
     cell_h = h * scale
 
-    # top-center, bottom-left, bottom-right
+    # y-up convention (see apply_top_bottom): the visual TOP position
+    # has high y; the two BOTTOM positions have low y. After the render-
+    # time flip this becomes 1 instance at the visual top-center plus 2
+    # instances at the visual bottom-left / bottom-right.
     positions: list[BBox] = [
-        (gx0 + (w - cell_w) / 2.0, gy0, gx0 + (w + cell_w) / 2.0, gy0 + cell_h),
-        (gx0, gy1 - cell_h, gx0 + cell_w, gy1),
-        (gx1 - cell_w, gy1 - cell_h, gx1, gy1),
+        # top-center: high y range
+        (gx0 + (w - cell_w) / 2.0, gy1 - cell_h, gx0 + (w + cell_w) / 2.0, gy1),
+        # bottom-left: low y range
+        (gx0, gy0, gx0 + cell_w, gy0 + cell_h),
+        # bottom-right: low y range
+        (gx1 - cell_w, gy0, gx1, gy0 + cell_h),
     ]
 
     resolved: list[InstancePlacement] = []

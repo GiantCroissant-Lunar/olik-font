@@ -13,21 +13,21 @@ from dataclasses import dataclass
 
 from olik_font.prototypes.extraction_plan import PrototypePlan
 
-_SLUGS: dict[str, str] = {
-    "木": "tree",
-    "日": "sun",
-    "月": "moon",
-    "氵": "water_3dots",
-    "囗": "enclosure_box",
-    "或": "huo",
-    "龶": "sheng",
-    "青": "qing",
-}
-
 
 def name_to_slug(name: str) -> str:
-    """Deterministic ASCII slug for a component name."""
-    return _SLUGS.get(name, f"u{ord(name[0]):04x}")
+    """Deterministic codepoint slug for a component name.
+
+    Auto-planned prototypes always use the `u<hex>` form (e.g. `u65e5`
+    for 日). The friendly slugs on the 4 hand-tuned seed prototypes
+    (proto:sun, proto:moon, etc.) stay in the DB as-is; auto-extraction
+    intentionally does NOT reuse them because the seeds were extracted
+    from context chars (明, 清) rather than from the component's own
+    standalone MMH entry. Isolating the two keeps auto-extractions
+    correct without rewriting the seed rows.
+    """
+    if not name:
+        return "empty"
+    return f"u{ord(name[0]):04x}"
 
 
 def canonical_id(component_name: str) -> str:
