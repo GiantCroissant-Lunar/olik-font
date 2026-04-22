@@ -18,8 +18,8 @@ def _rect_path(x0: float, y0: float, x1: float, y1: float) -> str:
 def test_identity_match_scores_near_one() -> None:
     """Canonical and context have identical strokes in identical positions;
     slot is the full canonical bbox → every pair's IoU ≈ 1.0."""
-    canonical = [_rect_path(0, 0, 100, 100), _rect_path(200, 200, 400, 400)]
-    context = [_rect_path(0, 0, 100, 100), _rect_path(200, 200, 400, 400)]
+    canonical = [_rect_path(0, 0, 256, 256), _rect_path(512, 512, 1024, 1024)]
+    context = [_rect_path(0, 0, 256, 256), _rect_path(512, 512, 1024, 1024)]
     result = match_in_slot(canonical, context, CANONICAL_SLOT)
     assert isinstance(result, MatchResult)
     assert result.k_gt_m is False

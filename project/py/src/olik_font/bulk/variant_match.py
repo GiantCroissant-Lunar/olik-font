@@ -27,10 +27,8 @@ from dataclasses import dataclass
 from scipy.optimize import linear_sum_assignment
 
 from olik_font.compose.iou import bbox_iou
-from olik_font.geom import apply_affine_to_point, bbox_of_paths, bbox_to_bbox_affine
+from olik_font.geom import apply_affine_to_point, bbox_of_paths, bbox_to_bbox_affine, union_bbox
 from olik_font.types import Affine, BBox
-
-CANONICAL_SLOT: BBox = (0.0, 0.0, 1024.0, 1024.0)
 
 
 @dataclass(frozen=True)
@@ -107,7 +105,8 @@ def match_in_slot(
         )
 
     canonical_stroke_bboxes = [bbox_of_paths([path]) for path in canonical_strokes]
-    affine = bbox_to_bbox_affine(CANONICAL_SLOT, slot)
+    canonical_union = union_bbox(tuple(canonical_stroke_bboxes))
+    affine = bbox_to_bbox_affine(canonical_union, slot)
     canonical_in_slot = [_transform_bbox(bbox, affine) for bbox in canonical_stroke_bboxes]
 
     context_bboxes = [bbox_of_paths([path]) for path in context_strokes]

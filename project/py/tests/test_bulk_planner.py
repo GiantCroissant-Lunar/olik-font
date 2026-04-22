@@ -8,11 +8,17 @@ from olik_font.bulk.planner import (
     PlanUnsupported,
     plan_char,
 )
-from olik_font.bulk.reuse import ProtoIndex, canonical_id
+from olik_font.bulk.reuse import ProtoIndex, canonical_id, variant_id
+from olik_font.prototypes.extraction_plan import PrototypePlan
 
-# Plan 09.1: canonicals are extracted from the component's OWN standalone
-# MMH entry, so the fixture must include an entry for every component
-# referenced by the cjk-decomp of the char-under-test.
+
+def _rect_path(x0: float, y0: float, x1: float, y1: float) -> str:
+    return f"M{x0},{y0} L{x1},{y0} L{x1},{y1} L{x0},{y1} Z"
+
+
+# Canonicals are extracted from the component's own standalone MMH entry
+# (Plan 09.1 fix), so every component of a char-under-test must have an
+# entry in MINIMAL_MMH.
 MINIMAL_MMH = {
     "明": {
         "character": "明",
@@ -30,21 +36,17 @@ def test_plan_char_supported_op_returns_ok() -> None:
         cjk_entry={"operator": "a", "components": ["日", "月"]},
         mmh=MINIMAL_MMH,
         index=ProtoIndex(prototypes=[]),
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
     assert isinstance(result, PlanOk)
     assert result.glyph_plan.preset == "left_right"
     assert len(result.glyph_plan.children) == 2
-    # Auto-planned canonicals use codepoint slugs (u<hex>) — friendly
-    # slugs like proto:sun stay reserved for the hand-tuned seed rows.
     assert {p.id for p in result.new_prototypes} == {
         canonical_id("日"),
         canonical_id("月"),
     }
-    # Each new proto carries ALL strokes from its OWN standalone MMH
-    # entry (4 for 日, 4 for 月), NOT a naive split of 明's 8 strokes.
     by_name = {p.name: p for p in result.new_prototypes}
     assert by_name["日"].stroke_indices == (0, 1, 2, 3)
     assert by_name["日"].from_char == "日"
@@ -58,7 +60,7 @@ def test_plan_char_unsupported_op_returns_sentinel() -> None:
         cjk_entry={"operator": "wb", "components": ["弓", "爾"]},
         mmh=MINIMAL_MMH,
         index=ProtoIndex(prototypes=[]),
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -72,7 +74,7 @@ def test_plan_char_missing_mmh_returns_failed() -> None:
         cjk_entry={"operator": "a", "components": ["鼻", "囊"]},
         mmh=MINIMAL_MMH,
         index=ProtoIndex(prototypes=[]),
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -81,21 +83,17 @@ def test_plan_char_missing_mmh_returns_failed() -> None:
 
 
 def test_plan_char_missing_component_mmh_returns_failed() -> None:
-    """If a component has no standalone MMH entry, refuse to mint a
-    canonical with context-split strokes — fail honestly so the glyph
-    lands as a stub row for a later plan with better data."""
     partial_mmh = {
         "某": {"character": "某", "strokes": ["X0"] * 5, "medians": [[]] * 5},
-        # 甘 present
         "甘": {"character": "甘", "strokes": ["G0"] * 3, "medians": [[]] * 3},
-        # but 木 missing
+        # 木 missing intentionally.
     }
     result = plan_char(
         char="某",
         cjk_entry={"operator": "d", "components": ["甘", "木"]},
         mmh=partial_mmh,
         index=ProtoIndex(prototypes=[]),
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -104,36 +102,128 @@ def test_plan_char_missing_component_mmh_returns_failed() -> None:
     assert "standalone MMH" in result.reason
 
 
-def test_plan_char_low_iou_returns_failed_no_variant() -> None:
-    """Plan 09.1 intentionally does NOT mint context-variant prototypes
-    (MMH lacks per-stroke matches to do it correctly). If canonical
-    reuse fails the IoU gate, return PlanFailed so the glyph lands as
-    needs_review, not with wrong strokes.
-    """
-    from olik_font.prototypes.extraction_plan import PrototypePlan
+# -------- variant mint tests (Plan 09.2) --------
 
-    existing = [
-        PrototypePlan(
-            id=canonical_id("月"),
-            name="月",
-            from_char="月",
-            stroke_indices=(0, 1, 2, 3),
-            roles=("meaning",),
-            anchors={},
-        ),
+
+def test_plan_char_mints_variant_when_canonical_below_gate() -> None:
+    """Canonical 木 exists; probe returns 0.5 -> mint variant proto:u6728_in_林
+    with stroke_indices pointing into 林's MMH entry (matched by
+    variant_match). variant_edges records the canonical->variant edge.
+
+    Fixture geometry: 木's standalone strokes span the full canonical
+    frame, and 林's first 4 strokes are those same strokes transformed
+    into the left_right preset's left slot. The remaining 4 live in the
+    right slot. The first occurrence mints the variant; the second
+    occurrence reuses it.
+    """
+    left_paths = [
+        _rect_path(0, 0, 100, 256),
+        _rect_path(100, 256, 200, 512),
+        _rect_path(200, 512, 300, 768),
+        _rect_path(300, 768, 400, 1024),
     ]
-    result = plan_char(
-        char="朔",
-        cjk_entry={"operator": "a", "components": ["屰", "月"]},
-        mmh={
-            **MINIMAL_MMH,
-            "朔": MINIMAL_MMH["明"],
-            "屰": MINIMAL_MMH["日"],
+    right_paths = [
+        _rect_path(420, 0, 571, 256),
+        _rect_path(571, 256, 722, 512),
+        _rect_path(722, 512, 873, 768),
+        _rect_path(873, 768, 1024, 1024),
+    ]
+    forest_paths = left_paths + right_paths
+
+    mmh = {
+        "林": {"character": "林", "strokes": forest_paths, "medians": [[]] * 8},
+        "木": {
+            "character": "木",
+            "strokes": [
+                _rect_path(0, 0, 256, 256),
+                _rect_path(256, 256, 512, 512),
+                _rect_path(512, 512, 768, 768),
+                _rect_path(768, 768, 1024, 1024),
+            ],
+            "medians": [[]] * 4,
         },
-        index=ProtoIndex(prototypes=existing),
-        probe_iou=lambda _: 0.5,  # canonical 月 fails
+    }
+    existing_canonical = PrototypePlan(
+        id=canonical_id("木"),
+        name="木",
+        from_char="木",
+        stroke_indices=(0, 1, 2, 3),
+        roles=("meaning",),
+        anchors={},
+    )
+    result = plan_char(
+        char="林",
+        cjk_entry={"operator": "a", "components": ["木", "木"]},
+        mmh=mmh,
+        index=ProtoIndex(prototypes=[existing_canonical]),
+        probe_iou=lambda *_a, **_kw: 0.5,
+        gate=0.90,
+        cap=2,
+    )
+    assert isinstance(result, PlanOk)
+    variant_protos = [p for p in result.new_prototypes if p.id == variant_id("木", "林")]
+    assert len(variant_protos) == 1
+    variant = variant_protos[0]
+    assert variant.from_char == "林"
+    assert len(variant.stroke_indices) == 4
+    assert all(0 <= i < 8 for i in variant.stroke_indices)
+    assert (variant_id("木", "林"), canonical_id("木")) in result.variant_edges
+
+
+def test_plan_char_fails_when_match_below_floor() -> None:
+    """Canonical exists but the context char's strokes don't overlap the
+    slot at all -> min_iou < 0.30 floor -> PlanFailed."""
+    canonical_paths = [_rect_path(0, 0, 100, 100), _rect_path(100, 100, 200, 200)]
+    context_paths = [_rect_path(900, 900, 1024, 1024), _rect_path(950, 950, 1000, 1000)]
+    mmh = {
+        "XX": {"character": "XX", "strokes": context_paths, "medians": [[]] * 2},
+        "木": {"character": "木", "strokes": canonical_paths, "medians": [[]] * 2},
+    }
+    existing_canonical = PrototypePlan(
+        id=canonical_id("木"),
+        name="木",
+        from_char="木",
+        stroke_indices=(0, 1),
+        roles=("meaning",),
+        anchors={},
+    )
+    result = plan_char(
+        char="XX",
+        cjk_entry={"operator": "a", "components": ["木", "木"]},
+        mmh=mmh,
+        index=ProtoIndex(prototypes=[existing_canonical]),
+        probe_iou=lambda *_a, **_kw: 0.0,
         gate=0.90,
         cap=2,
     )
     assert isinstance(result, PlanFailed)
-    assert "IoU" in result.reason or "variant" in result.reason
+    assert "floor" in result.reason.lower() or "match" in result.reason.lower()
+
+
+def test_plan_char_fails_when_k_gt_m() -> None:
+    """Canonical has more strokes than context slot can provide -> PlanFailed."""
+    canonical_paths = [_rect_path(i * 10, 0, i * 10 + 5, 5) for i in range(5)]
+    context_paths = [_rect_path(0, 0, 100, 100), _rect_path(200, 200, 300, 300)]
+    mmh = {
+        "CC": {"character": "CC", "strokes": context_paths, "medians": [[]] * 2},
+        "木": {"character": "木", "strokes": canonical_paths, "medians": [[]] * 5},
+    }
+    existing_canonical = PrototypePlan(
+        id=canonical_id("木"),
+        name="木",
+        from_char="木",
+        stroke_indices=tuple(range(5)),
+        roles=("meaning",),
+        anchors={},
+    )
+    result = plan_char(
+        char="CC",
+        cjk_entry={"operator": "a", "components": ["木", "木"]},
+        mmh=mmh,
+        index=ProtoIndex(prototypes=[existing_canonical]),
+        probe_iou=lambda *_a, **_kw: 0.0,
+        gate=0.90,
+        cap=2,
+    )
+    assert isinstance(result, PlanFailed)
+    assert "k_gt_m" in result.reason.lower() or "more" in result.reason.lower()
