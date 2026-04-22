@@ -27,6 +27,7 @@ project/py/data/*
 # animCJK zh-Hant dataset snapshot used by Plan 13 Task B.
 !project/py/data/animcjk/
 !project/py/data/animcjk/**
+!project/py/data/carved_components.json
 project/py/.pytest_cache/
 project/py/**/__pycache__/
 project/py/src/*.egg-info/

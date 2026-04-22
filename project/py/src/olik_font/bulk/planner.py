@@ -15,12 +15,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from olik_font.bulk import variant_match
 from olik_font.bulk.mmh_partition import nested_partition, top_level_partition
 from olik_font.bulk.reuse import ProtoIndex, decide_prototype, name_to_slug
 from olik_font.geom import bbox_of_paths, union_bbox
+from olik_font.prototypes.carve import DEFAULT_CARVED_COMPONENTS, carve_component
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
 from olik_font.types import BBox
 
@@ -49,13 +51,33 @@ def _extract_canonical_prototype(
     component_name: str,
     proto_id: str,
     mmh: dict,
+    *,
+    cjk_entries: dict[str, dict[str, Any]] | None = None,
+    graphics_lookup: Callable[[str], Any | None] | None = None,
+    dictionary_lookup: Callable[[str], Any | None] | None = None,
+    carved_cache_path: Path = DEFAULT_CARVED_COMPONENTS,
 ) -> PrototypePlan:
     """Extract a canonical prototype from the component's OWN standalone
     MMH entry (Plan 09.1 correctness fix).
     """
-    mmh_entry = mmh.get(component_name)
-    if mmh_entry is None:
-        raise RuntimeError(f"no standalone MMH entry for component '{component_name}'")
+    try:
+        mmh_entry = _require_standalone_entry(component_name, mmh)
+    except RuntimeError:
+        if cjk_entries is None or graphics_lookup is None or dictionary_lookup is None:
+            raise
+        carved = carve_component(
+            component_name,
+            cjk_entries,
+            graphics_lookup=graphics_lookup,
+            dictionary_lookup=dictionary_lookup,
+            cache_path=carved_cache_path,
+        )
+        mmh_entry = {
+            "character": carved.character,
+            "strokes": list(carved.strokes),
+            "medians": carved.medians,
+        }
+        mmh[component_name] = mmh_entry
     stroke_count = len(_strokes_of(mmh_entry))
     return PrototypePlan(
         id=proto_id,
@@ -65,6 +87,13 @@ def _extract_canonical_prototype(
         roles=("meaning",),
         anchors={},
     )
+
+
+def _require_standalone_entry(component_name: str, mmh: dict) -> Any:
+    mmh_entry = mmh.get(component_name)
+    if mmh_entry is None:
+        raise RuntimeError(f"no standalone MMH entry for component '{component_name}'")
+    return mmh_entry
 
 
 def _extract_variant_prototype(
@@ -154,6 +183,11 @@ def plan_char(
     probe_iou: Callable[[str, str, BBox], float],
     gate: float,
     cap: int,
+    *,
+    cjk_entries: dict[str, dict[str, Any]] | None = None,
+    graphics_lookup: Callable[[str], Any | None] | None = None,
+    dictionary_lookup: Callable[[str], Any | None] | None = None,
+    carved_cache_path: Path = DEFAULT_CARVED_COMPONENTS,
 ) -> PlanResult:
     """Return a PlanResult for one char without touching the DB.
 
@@ -240,7 +274,15 @@ def plan_char(
 
             if decision.is_new_canonical:
                 try:
-                    proto = _extract_canonical_prototype(comp_name, decision.chosen_id, mmh)
+                    proto = _extract_canonical_prototype(
+                        comp_name,
+                        decision.chosen_id,
+                        mmh,
+                        cjk_entries=cjk_entries,
+                        graphics_lookup=graphics_lookup,
+                        dictionary_lookup=dictionary_lookup,
+                        carved_cache_path=carved_cache_path,
+                    )
                 except RuntimeError as exc:
                     return PlanFailed(reason=str(exc))
                 new_protos.append(proto)
