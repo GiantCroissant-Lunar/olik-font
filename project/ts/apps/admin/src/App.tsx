@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { Container, Title, Text, Stack, Loader, Alert } from "@mantine/core";
+import { Alert, Container, Loader } from "@mantine/core";
 import { Refine } from "@refinedev/core";
+import routerBindings from "@refinedev/react-router";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createDb, type OlikDb } from "@olik/glyph-db";
 
 import { createDataProvider } from "./data-provider.js";
 import { noopAuthProvider } from "./auth-provider.js";
+import { GlyphList } from "./resources/glyph/list.js";
 
 export function App() {
   const [db, setDb] = useState<OlikDb | null>(null);
@@ -44,17 +47,22 @@ export function App() {
   }
 
   return (
-    <Refine
-      dataProvider={createDataProvider(db)}
-      authProvider={noopAuthProvider}
-      resources={[{ name: "glyph" }, { name: "style_variant" }]}
-    >
-      <Container size="sm" mt="xl">
-        <Stack>
-          <Title order={1}>olik admin</Title>
-          <Text c="dimmed">Refine is wired. Resources land in Task 7.</Text>
-        </Stack>
-      </Container>
-    </Refine>
+    <BrowserRouter>
+      <Refine
+        dataProvider={createDataProvider(db)}
+        authProvider={noopAuthProvider}
+        routerProvider={routerBindings}
+        resources={[
+          { name: "glyph", list: "/glyph", show: "/glyph/:id" },
+          { name: "style_variant", list: "/style_variant" },
+        ]}
+      >
+        <Routes>
+          <Route path="/" element={<Navigate to="/glyph" replace />} />
+          <Route path="/glyph" element={<GlyphList />} />
+          {/* Detail route arrives in Task 9 */}
+        </Routes>
+      </Refine>
+    </BrowserRouter>
   );
 }
