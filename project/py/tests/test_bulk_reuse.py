@@ -47,8 +47,11 @@ def test_reuse_when_canonical_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -62,8 +65,11 @@ def test_new_prototype_when_none_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -82,8 +88,11 @@ def test_hand_tuned_seed_prototypes_are_not_reused() -> None:
     decision = decide_prototype(
         component_char="日",
         context_char="旭",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 1.0,
+        probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
@@ -101,8 +110,11 @@ def test_variant_decision_fires_when_canonical_below_gate() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 0.7,
+        probe_iou=lambda *_a, **_kw: 0.7,
         gate=0.90,
         cap=2,
     )
@@ -123,8 +135,11 @@ def test_variant_reuse_when_context_match_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 0.7,
+        probe_iou=lambda *_a, **_kw: 0.7,
         gate=0.90,
         cap=2,
     )
@@ -145,10 +160,39 @@ def test_variant_cap_exceeded_signals_review() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="橋",
+        preset="left_right",
+        n_components=2,
+        slot_idx=0,
         index=idx,
-        probe_iou=lambda _: 0.5,
+        probe_iou=lambda *_a, **_kw: 0.5,
         gate=0.90,
         cap=2,
     )
     assert decision.chosen_id is None
     assert decision.cap_exceeded is True
+
+
+def test_probe_iou_receives_five_args() -> None:
+    """Guards the callable contract: (component_char, context_char, preset,
+    n_components, slot_idx) -> float. If this breaks, batch.py's real probe
+    won't line up with the planner's call."""
+    cid = canonical_id("木")
+    idx = ProtoIndex(prototypes=[_proto(cid, "木", "木", (0, 1, 2, 3))])
+    received: dict[str, object] = {}
+
+    def spy_probe(comp: str, ctx: str, preset: str, n: int, slot: int) -> float:
+        received.update(comp=comp, ctx=ctx, preset=preset, n=n, slot=slot)
+        return 1.0
+
+    decide_prototype(
+        component_char="木",
+        context_char="林",
+        preset="left_right",
+        n_components=2,
+        slot_idx=1,
+        index=idx,
+        probe_iou=spy_probe,
+        gate=0.90,
+        cap=2,
+    )
+    assert received == {"comp": "木", "ctx": "林", "preset": "left_right", "n": 2, "slot": 1}

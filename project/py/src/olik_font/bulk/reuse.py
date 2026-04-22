@@ -74,12 +74,21 @@ class ReuseDecision:
 def decide_prototype(
     component_char: str,
     context_char: str,
+    preset: str,
+    n_components: int,
+    slot_idx: int,
     index: ProtoIndex,
-    probe_iou: Callable[[PrototypePlan], float],
+    probe_iou: Callable[[str, str, str, int, int], float],
     gate: float,
     cap: int,
 ) -> ReuseDecision:
-    """Decide which prototype a component should resolve to."""
+    """Decide which prototype a component should resolve to.
+
+    `probe_iou(component_char, context_char, preset, n_components, slot_idx)`
+    returns the matched mean IoU of the canonical against the context char's
+    strokes in the preset's slot. Below `gate` triggers context-variant
+    fallback.
+    """
     exact_variant = variant_id(component_char, context_char)
     for p in index.prototypes:
         if p.id == exact_variant:
@@ -93,7 +102,7 @@ def decide_prototype(
             is_new_canonical=True,
         )
 
-    if probe_iou(canonical) >= gate:
+    if probe_iou(component_char, context_char, preset, n_components, slot_idx) >= gate:
         return ReuseDecision(chosen_id=canonical.id, canonical_for_edge=None)
 
     existing_variants = index.variants_of(component_char)
