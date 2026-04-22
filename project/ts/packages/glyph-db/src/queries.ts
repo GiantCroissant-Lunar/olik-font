@@ -46,10 +46,14 @@ export function buildListQuery(opts: ListOpts | undefined) {
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
   const sortField: GlyphSortField = opts?.sort ?? "char";
+  const order = opts?.order === "desc" ? "DESC" : "ASC";
+  const comparator = order === "DESC" ? "<" : ">";
   const limit = opts?.pageSize ?? 50;
   let cursorClause = "";
   if (opts?.cursor !== undefined) {
-    cursorClause = clauses.length > 0 ? ` AND ${sortField} > $cursor` : ` WHERE ${sortField} > $cursor`;
+    cursorClause = clauses.length > 0
+      ? ` AND ${sortField} ${comparator} $cursor`
+      : ` WHERE ${sortField} ${comparator} $cursor`;
     bind.cursor =
       sortField === "stroke_count" || sortField === "iou_mean"
         ? Number(opts.cursor)
@@ -59,7 +63,7 @@ export function buildListQuery(opts: ListOpts | undefined) {
     "SELECT char, stroke_count, radical, iou_mean FROM glyph"
     + where
     + cursorClause
-    + ` ORDER BY ${sortField} LIMIT ${limit + 1};`;
+    + ` ORDER BY ${sortField} ${order} LIMIT ${limit + 1};`;
 
   return { sql, bind, limit, sortField };
 }
@@ -154,7 +158,7 @@ export function makeQueries(raw: Surreal): OlikDb {
       }
       await raw
         .query(
-          "UPDATE type::thing('glyph', $char) MERGE $patch;",
+          "UPDATE type::record('glyph', $char) MERGE $patch;",
           {
             char,
             patch: {

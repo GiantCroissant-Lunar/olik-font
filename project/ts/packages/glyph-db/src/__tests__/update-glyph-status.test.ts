@@ -10,7 +10,7 @@ function mockSurreal(getRows: unknown, updateSpy: ReturnType<typeof vi.fn>) {
           collect: async () => [[getRows]],
         };
       }
-      if (sql.startsWith("UPDATE type::thing")) {
+      if (sql.startsWith("UPDATE type::record")) {
         return {
           collect: async () => {
             updateSpy(sql);

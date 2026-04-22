@@ -41,11 +41,13 @@ function mapFilters(filters: CrudFilter[] | undefined): ListFilter {
 
 function mapSort(
   sorters: CrudSort[] | undefined,
-): "char" | "stroke_count" | "iou_mean" {
+): { field: "char" | "stroke_count" | "iou_mean"; order: "asc" | "desc" } {
   const s = sorters?.[0];
-  if (s?.field === "stroke_count") return "stroke_count";
-  if (s?.field === "iou_mean") return "iou_mean";
-  return "char";
+  const field =
+    s?.field === "stroke_count" ? "stroke_count" :
+    s?.field === "iou_mean" ? "iou_mean" : "char";
+  const order = s?.order === "desc" ? "desc" : "asc";
+  return { field, order };
 }
 
 export function createDataProvider(db: OlikDb): DataProvider {
@@ -60,9 +62,11 @@ export function createDataProvider(db: OlikDb): DataProvider {
       if (resource !== "glyph") {
         throw new Error(`unknown resource: ${resource}`);
       }
+      const sortMapped = mapSort(sorters);
       const page = await db.listGlyphs({
         filter: mapFilters(filters),
-        sort: mapSort(sorters),
+        sort: sortMapped.field,
+        order: sortMapped.order,
         pageSize: pagination?.pageSize ?? 50,
       });
       return {

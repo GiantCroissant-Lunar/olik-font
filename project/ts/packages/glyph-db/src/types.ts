@@ -83,6 +83,7 @@ export type ListFilter = {
 export interface ListOpts {
   filter?: ListFilter;
   sort?: "char" | "stroke_count" | "iou_mean";
+  order?: "asc" | "desc";
   pageSize?: number;
   cursor?: string;
 }

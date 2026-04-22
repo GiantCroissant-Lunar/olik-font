@@ -96,7 +96,7 @@ export function GlyphDetail() {
     iou_mean?: number;
     stroke_count?: number;
     radical?: string | null;
-    stroke_instances?: Array<{ d?: string }>;
+    stroke_instances?: Array<{ path?: string; d?: string }>;
     mmh_strokes?: string[];
     components?: unknown[];
     extraction_run?: string;
@@ -105,7 +105,7 @@ export function GlyphDetail() {
   };
 
   const composedPaths = (row.stroke_instances ?? [])
-    .map((s) => s.d ?? "")
+    .map((s) => s.path ?? s.d ?? "")
     .filter((d) => d.length > 0);
   const mmhPaths = row.mmh_strokes ?? [];
 
