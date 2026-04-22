@@ -21,8 +21,8 @@
   },
   "peerDependencies": {
     "@xyflow/react": ">=12",
-    "react": ">=18",
-    "react-dom": ">=18"
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
   },
   "dependencies": {
     "@olik/glyph-schema": "workspace:*",
@@ -30,12 +30,12 @@
   },
   "devDependencies": {
     "@testing-library/react": "16.0.1",
-    "@types/react": "18.3.11",
-    "@types/react-dom": "18.3.0",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
     "@xyflow/react": "12.3.5",
     "jsdom": "25.0.1",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "tsup": "8.3.0",
     "typescript": "5.6.3",
     "vitest": "2.1.2"
