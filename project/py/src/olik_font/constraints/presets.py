@@ -18,7 +18,7 @@ from olik_font.constraints.primitives import (
     OrderY,
     Primitive,
 )
-from olik_font.geom import bbox_to_bbox_affine
+from olik_font.geom import bbox_to_bbox_affine, fit_in_slot
 from olik_font.types import BBox, InstancePlacement
 
 CANONICAL: BBox = (0.0, 0.0, 1024.0, 1024.0)
@@ -138,11 +138,19 @@ def apply_left_right(
     weight_l: float = 400.0 / 1024.0,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    left_bbox = _slot_bbox_left_right(0, glyph_bbox, weight_l=weight_l, gap=gap)
-    right_bbox = _slot_bbox_left_right(1, glyph_bbox, weight_l=weight_l, gap=gap)
+    # Plan 09.1 pinned weight/gap to module-level constants; keep the
+    # keyword signature for call-site compatibility but ignore overrides.
+    del weight_l, gap
+    slot_0 = _slot_bbox_left_right(0, glyph_bbox)
+    slot_1 = _slot_bbox_left_right(1, glyph_bbox)
 
-    left_out = replace(left, transform=bbox_to_bbox_affine(CANONICAL, left_bbox))
-    right_out = replace(right, transform=bbox_to_bbox_affine(CANONICAL, right_bbox))
+    # Plan 10.1: anchor canonical top-left inside each slot so radicals
+    # don't get non-uniformly stretched.
+    left_target = fit_in_slot(CANONICAL, slot_0, "top-left")
+    right_target = fit_in_slot(CANONICAL, slot_1, "top-left")
+
+    left_out = replace(left, transform=bbox_to_bbox_affine(CANONICAL, left_target))
+    right_out = replace(right, transform=bbox_to_bbox_affine(CANONICAL, right_target))
 
     constraints: tuple[Primitive, ...] = (
         AlignY(targets=(f"{left.instance_id}.center", f"{right.instance_id}.center")),
@@ -150,7 +158,7 @@ def apply_left_right(
         AnchorDistance(
             from_=f"{left.instance_id}.right_edge",
             to=f"{right.instance_id}.left_edge",
-            value=gap,
+            value=_LEFT_RIGHT_GAP,
         ),
     )
     return left_out, right_out, constraints
