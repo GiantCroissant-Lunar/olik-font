@@ -78,6 +78,7 @@ def build_glyph_record(
             }
             for s in strokes
         ],
+        "mmh_strokes": list(mmh_char.strokes),
         "constraints": [primitive_to_dict(c) for c in constraints],
         "render_layers": _RENDER_LAYERS,
         "roles": _roles_for(resolved_tree, library),

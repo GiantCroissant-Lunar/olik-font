@@ -10,4 +10,7 @@ export type {
   Unsubscribe,
   GlyphRecord,
   Prototype,
+  Status,
+  ReviewUpdate,
 } from "./types.js";
+export { InvalidTransition, VALID_TRANSITIONS, STATUS_VALUES } from "./types.js";

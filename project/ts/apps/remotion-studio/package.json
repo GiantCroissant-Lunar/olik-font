@@ -13,15 +13,16 @@
     "@olik/glyph-loader": "workspace:*",
     "@olik/glyph-schema": "workspace:*",
     "@olik/glyph-viz": "workspace:*",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "remotion": "4.0.228",
     "@remotion/cli": "4.0.228",
     "@remotion/bundler": "4.0.228"
   },
   "devDependencies": {
-    "@types/react": "18.3.11",
-    "@types/react-dom": "18.3.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
     "typescript": "5.6.3",
     "vitest": "2.1.2"
   }

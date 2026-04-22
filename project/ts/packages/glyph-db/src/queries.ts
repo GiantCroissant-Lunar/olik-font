@@ -3,17 +3,21 @@ import { Uuid, type Surreal } from "surrealdb";
 import type { GlyphRecord } from "@olik/glyph-schema";
 import type { OlikDb } from "./client.js";
 import type { Unsubscribe } from "./types.js";
-import type {
-  GlyphSummary,
-  ListOpts,
-  ListPage,
-  PrototypeSummary,
-  StyleVariant,
+import {
+  InvalidTransition,
+  VALID_TRANSITIONS,
+  type GlyphSummary,
+  type ListOpts,
+  type ListPage,
+  type PrototypeSummary,
+  type ReviewUpdate,
+  type Status,
+  type StyleVariant,
 } from "./types.js";
 
 type GlyphSortField = NonNullable<ListOpts["sort"]>;
 
-function buildListQuery(opts: ListOpts | undefined) {
+export function buildListQuery(opts: ListOpts | undefined) {
   const clauses: string[] = [];
   const bind: Record<string, unknown> = {};
   const f = opts?.filter ?? {};
@@ -29,6 +33,15 @@ function buildListQuery(opts: ListOpts | undefined) {
   if (f.iouBelow !== undefined) {
     clauses.push("iou_mean < $iou");
     bind.iou = f.iouBelow;
+  }
+  if (f.iouRange !== undefined) {
+    clauses.push("iou_mean >= $iou_lo AND iou_mean <= $iou_hi");
+    bind.iou_lo = f.iouRange[0];
+    bind.iou_hi = f.iouRange[1];
+  }
+  if (f.status !== undefined) {
+    clauses.push("status IN $status");
+    bind.status = Array.isArray(f.status) ? f.status : [f.status];
   }
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
@@ -126,6 +139,33 @@ export function makeQueries(raw: Surreal): OlikDb {
           // connection may already be closed
         }
       };
+    },
+    async updateGlyphStatus(char: string, update: ReviewUpdate): Promise<void> {
+      const [rows = []] = await raw
+        .query("SELECT * FROM glyph WHERE char = $c;", { c: char })
+        .collect<[Array<{ status?: string }>]>();
+      const existing = rows[0];
+      if (existing === undefined) {
+        throw new Error(`glyph not found: ${char}`);
+      }
+      const currentStatus = (existing.status ?? "needs_review") as Status;
+      if (!VALID_TRANSITIONS[currentStatus]?.has(update.newStatus)) {
+        throw new InvalidTransition(currentStatus, update.newStatus);
+      }
+      await raw
+        .query(
+          "UPDATE type::thing('glyph', $char) MERGE $patch;",
+          {
+            char,
+            patch: {
+              status: update.newStatus,
+              review_note: update.reviewNote ?? null,
+              reviewed_at: new Date().toISOString(),
+              reviewed_by: update.reviewedBy ?? "browser",
+            },
+          },
+        )
+        .collect();
     },
     async close(): Promise<void> {
       await raw.close();

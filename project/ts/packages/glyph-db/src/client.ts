@@ -6,6 +6,7 @@ import type {
   ListOpts,
   ListPage,
   PrototypeSummary,
+  ReviewUpdate,
   StyleVariant,
   Unsubscribe,
 } from "./types.js";
@@ -33,6 +34,7 @@ export interface OlikDb {
   getPrototypeUsers(id: string): Promise<GlyphSummary[]>;
   listVariants(char: string): Promise<StyleVariant[]>;
   subscribeVariants(char: string, cb: (v: StyleVariant) => void): Promise<Unsubscribe>;
+  updateGlyphStatus(char: string, update: ReviewUpdate): Promise<void>;
   close(): Promise<void>;
 }
 
