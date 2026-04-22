@@ -7,6 +7,7 @@ import { createDb, type OlikDb } from "@olik/glyph-db";
 
 import { createDataProvider } from "./data-provider.js";
 import { noopAuthProvider } from "./auth-provider.js";
+import { GlyphDetail } from "./resources/glyph/detail.js";
 import { GlyphList } from "./resources/glyph/list.js";
 
 export function App() {
@@ -60,7 +61,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/glyph" replace />} />
           <Route path="/glyph" element={<GlyphList />} />
-          {/* Detail route arrives in Task 9 */}
+          <Route path="/glyph/:id" element={<GlyphDetail />} />
         </Routes>
       </Refine>
     </BrowserRouter>
