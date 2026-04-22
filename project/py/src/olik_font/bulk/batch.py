@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from olik_font.bulk import variant_match
 from olik_font.bulk.charlist import load_moe_4808, select_buckets
 from olik_font.bulk.planner import PlanFailed, PlanUnsupported, plan_char
@@ -39,6 +41,7 @@ _PY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
 _DEFAULT_ANIMCJK_DIR = _PY_ROOT / "data" / "animcjk"
 _DEFAULT_CJK = _PY_ROOT / "data" / "cjk-decomp.json"
+_DEFAULT_CJK_OVERRIDES = _PY_ROOT / "data" / "cjk_decomp_overrides.yaml"
 _DEFAULT_RULES = _PY_ROOT / "src" / "olik_font" / "rules" / "rules.yaml"
 _GLYPH_BBOX = (0.0, 0.0, 1024.0, 1024.0)
 
@@ -77,15 +80,61 @@ def _record_key(value: object, table: str) -> str:
     return text
 
 
-def _load_cjk_entries(path: Path = _DEFAULT_CJK) -> dict[str, dict[str, Any]]:
+def _load_cjk_overrides(path: Path = _DEFAULT_CJK_OVERRIDES) -> dict[str, dict[str, Any]]:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"failed to read {path}: expected mapping")
+
+    overrides: dict[str, dict[str, Any]] = {}
+    for char, entry in raw.items():
+        if not isinstance(char, str) or not char:
+            raise ValueError(f"cjk override key must be a non-empty string: {char!r}")
+        if not isinstance(entry, dict):
+            raise ValueError(f"cjk override for {char!r} must be a mapping")
+        if "operator" not in entry or "components" not in entry:
+            raise ValueError(f"cjk override for {char!r} must include operator and components")
+
+        operator = entry["operator"]
+        if operator is not None and not isinstance(operator, str):
+            raise ValueError(f"cjk override operator for {char!r} must be a string or null")
+
+        components = entry["components"]
+        if not isinstance(components, list) or any(
+            not isinstance(component, str) or not component for component in components
+        ):
+            raise ValueError(f"cjk override components for {char!r} must be a list[str]")
+
+        overrides[char] = {
+            "operator": operator,
+            "components": list(components),
+        }
+    return overrides
+
+
+def _load_cjk_entries(
+    path: Path = _DEFAULT_CJK,
+    *,
+    overrides_path: Path = _DEFAULT_CJK_OVERRIDES,
+) -> dict[str, dict[str, Any]]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     entries = raw.get("entries", {})
+    merged_entries = {
+        char: dict(entry) for char, entry in entries.items() if isinstance(entry, dict)
+    }
+
+    for char, entry in _load_cjk_overrides(overrides_path).items():
+        merged_entries[char] = dict(entry)
+        print(
+            f"cjk-decomp override: {char} -> operator={entry['operator']!r} "
+            f"components={entry['components']}",
+            file=sys.stderr,
+        )
 
     def build_component_tree(component_char: str, seen: frozenset[str]) -> dict[str, Any]:
         if component_char in seen:
             return {"char": component_char, "components": []}
 
-        child_entry = entries.get(component_char)
+        child_entry = merged_entries.get(component_char)
         raw_children = child_entry.get("components", []) if isinstance(child_entry, dict) else []
         if not isinstance(raw_children, list) or not raw_children:
             return {"char": component_char, "components": []}
@@ -98,7 +147,7 @@ def _load_cjk_entries(path: Path = _DEFAULT_CJK) -> dict[str, dict[str, Any]]:
         }
 
     enriched: dict[str, dict[str, Any]] = {}
-    for char, entry in entries.items():
+    for char, entry in merged_entries.items():
         components = entry.get("components", []) if isinstance(entry, dict) else []
         enriched[char] = {
             **entry,
