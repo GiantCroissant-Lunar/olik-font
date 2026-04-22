@@ -92,9 +92,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     ext_retry.add_argument("--iou-gate", type=float, default=0.90)
     style = subparsers.add_parser("style", help="batch stylize glyph records via ComfyUI")
-    style.add_argument("chars", nargs="+")
+    style.add_argument("chars", nargs="*")
+    style.add_argument(
+        "--all-verified",
+        action="store_true",
+        help="load every verified glyph from SurrealDB",
+    )
     style.add_argument("--styles", required=True)
     style.add_argument("--seeds", type=int, default=1)
+    style.add_argument("--max-concurrent", type=int, default=1)
     style.add_argument("--out", required=True, type=Path)
 
     return parser.parse_args(argv)
@@ -485,13 +491,31 @@ def _cmd_extract_retry(args: argparse.Namespace) -> int:
 
 
 def _cmd_style(args: argparse.Namespace) -> int:
+    if args.all_verified and args.chars:
+        print("style accepts explicit chars or --all-verified, not both", file=sys.stderr)
+        return 2
+    if not args.all_verified and not args.chars:
+        print("style requires one or more chars or --all-verified", file=sys.stderr)
+        return 2
+
+    glyph_records: dict[str, dict[str, Any]] | None = None
+    chars = args.chars
+    if args.all_verified:
+        glyph_records = _load_verified_glyph_records()
+        chars = list(glyph_records)
+        if not chars:
+            print("no verified glyphs found")
+            return 0
+
     styles = [style.strip() for style in args.styles.split(",") if style.strip()]
     report = stylize(
-        chars=args.chars,
+        chars=chars,
         styles=styles,
         out_dir=args.out,
         seeds_per_style=args.seeds,
         client=ComfyUIClient(),
+        glyph_records=glyph_records,
+        max_concurrent=args.max_concurrent,
     )
     print(
         "styled "
@@ -499,6 +523,20 @@ def _cmd_style(args: argparse.Namespace) -> int:
         f"skipped={report.skipped} failed={report.failed}"
     )
     return 0 if report.failed == 0 else 1
+
+
+def _load_verified_glyph_records() -> dict[str, dict[str, Any]]:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+
+    db = connect()
+    ensure_schema(db)
+    rows = _query_rows(db.query("SELECT * FROM glyph WHERE status = 'verified' ORDER BY char;"))
+    return {
+        row["char"]: {k: _json_ready(v) for k, v in row.items() if k != "id"}
+        for row in rows
+        if isinstance(row.get("char"), str)
+    }
 
 
 def _query_rows(payload: object) -> list[dict[str, Any]]:
