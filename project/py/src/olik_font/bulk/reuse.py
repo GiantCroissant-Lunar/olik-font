@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from olik_font.prototypes.extraction_plan import PrototypePlan
 from olik_font.types import BBox
 
+VariantCap = int | Callable[[str], int]
+
 
 def name_to_slug(name: str) -> str:
     """Deterministic codepoint slug for a component name.
@@ -79,7 +81,7 @@ def decide_prototype(
     index: ProtoIndex,
     probe_iou: Callable[[str, str, BBox], float],
     gate: float,
-    cap: int,
+    cap: VariantCap,
 ) -> ReuseDecision:
     """Decide which prototype a component should resolve to.
 
@@ -103,8 +105,9 @@ def decide_prototype(
     if probe_iou(component_char, context_char, slot) >= gate:
         return ReuseDecision(chosen_id=canonical.id, canonical_for_edge=None)
 
+    max_variants = cap(component_char) if callable(cap) else cap
     existing_variants = index.variants_of(component_char)
-    if len(existing_variants) >= cap:
+    if len(existing_variants) >= max_variants:
         return ReuseDecision(
             chosen_id=None,
             canonical_for_edge=None,

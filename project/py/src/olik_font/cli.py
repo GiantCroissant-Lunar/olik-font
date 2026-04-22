@@ -66,7 +66,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     ext_auto.add_argument("--count", type=int, required=True)
     ext_auto.add_argument("--seed", type=int, default=42)
     ext_auto.add_argument("--iou-gate", type=float, default=0.90)
-    ext_auto.add_argument("--max-variants-per-proto", type=int, default=2)
     ext_auto.add_argument("--dry-run", action="store_true")
 
     ext_sub.add_parser("report", help="print status breakdown")
@@ -92,8 +91,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         choices=["unsupported_op", "needs_review", "failed_extraction"],
     )
     ext_retry.add_argument("--iou-gate", type=float, default=0.90)
-    ext_retry.add_argument("--max-variants-per-proto", type=int, default=2)
-
     style = subparsers.add_parser("style", help="batch stylize glyph records via ComfyUI")
     style.add_argument("chars", nargs="+")
     style.add_argument("--styles", required=True)
@@ -359,7 +356,6 @@ def _cmd_extract_auto(args: argparse.Namespace) -> int:
         count=args.count,
         seed=args.seed,
         iou_gate=args.iou_gate,
-        cap=args.max_variants_per_proto,
         dry_run=args.dry_run,
     )
     print(f"selected {report.selected} buckets (seed={report.seed})")
@@ -477,7 +473,6 @@ def _cmd_extract_retry(args: argparse.Namespace) -> int:
             count=len(chars),
             seed=0,
             iou_gate=args.iou_gate,
-            cap=args.max_variants_per_proto,
         )
     finally:
         cl.load_moe_4808 = orig_pool

@@ -20,7 +20,7 @@ from typing import Any
 
 from olik_font.bulk import variant_match
 from olik_font.bulk.mmh_partition import nested_partition, top_level_partition
-from olik_font.bulk.reuse import ProtoIndex, decide_prototype, name_to_slug
+from olik_font.bulk.reuse import ProtoIndex, VariantCap, decide_prototype, name_to_slug
 from olik_font.geom import bbox_of_paths, union_bbox
 from olik_font.prototypes.carve import DEFAULT_CARVED_COMPONENTS, carve_component
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
@@ -182,7 +182,7 @@ def plan_char(
     index: ProtoIndex,
     probe_iou: Callable[[str, str, BBox], float],
     gate: float,
-    cap: int,
+    cap: VariantCap,
     *,
     cjk_entries: dict[str, dict[str, Any]] | None = None,
     graphics_lookup: Callable[[str], Any | None] | None = None,

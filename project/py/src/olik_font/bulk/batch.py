@@ -14,8 +14,9 @@ from typing import Any
 from olik_font.bulk import variant_match
 from olik_font.bulk.charlist import load_moe_4808, select_buckets
 from olik_font.bulk.planner import PlanFailed, PlanUnsupported, plan_char
-from olik_font.bulk.reuse import ProtoIndex
+from olik_font.bulk.reuse import ProtoIndex, VariantCap
 from olik_font.bulk.status import Status
+from olik_font.bulk.variant_caps import load_variant_caps
 from olik_font.compose.walk import compose_transforms
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.emit.record import build_glyph_record
@@ -242,7 +243,7 @@ def run_batch(
     count: int,
     seed: int,
     iou_gate: float,
-    cap: int = 2,
+    cap: VariantCap | None = None,
     dry_run: bool = False,
     *,
     mmh_dir: Path = _DEFAULT_MMH_DIR,
@@ -251,6 +252,8 @@ def run_batch(
     rules_path: Path = _DEFAULT_RULES,
 ) -> BatchReport:
     del rules_path
+    if cap is None:
+        cap = load_variant_caps().cap_for
 
     lookup = load_unified_lookup(
         mmh_dir,
@@ -322,8 +325,9 @@ def run_batch(
             gate=iou_gate,
             cap=cap,
             cjk_entries=cjk,
-            graphics_lookup=lambda component: mmh.get(component)
-            or lookup.char_graphics_lookup(component),
+            graphics_lookup=lambda component: (
+                mmh.get(component) or lookup.char_graphics_lookup(component)
+            ),
             dictionary_lookup=lookup.char_dictionary_lookup,
         )
 
