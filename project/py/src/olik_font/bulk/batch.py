@@ -19,6 +19,7 @@ from olik_font.bulk.status import Status
 from olik_font.compose.walk import compose_transforms
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.emit.record import build_glyph_record
+from olik_font.prototypes.carve import load_carved_components
 from olik_font.prototypes.extract import extract_all_prototypes
 from olik_font.prototypes.extraction_plan import ExtractionPlan, PrototypePlan
 from olik_font.sink.surrealdb import (
@@ -259,7 +260,7 @@ def run_batch(
             file=sys.stderr,
         ),
     )
-    mmh = lookup.merged_graphics()
+    mmh = {**load_carved_components(), **lookup.merged_graphics()}
     cjk = _load_cjk_entries(cjk_path)
 
     pool = load_moe_4808()
@@ -300,7 +301,7 @@ def run_batch(
         planner_mmh: dict[str, dict[str, Any]] = {}
         needed = [ch, *entry.get("components", [])]
         for key in needed:
-            loaded = lookup.char_graphics_lookup(key) if isinstance(key, str) else None
+            loaded = mmh.get(key) if isinstance(key, str) else None
             if isinstance(key, str) and loaded is not None:
                 planner_mmh[key] = {
                     "character": loaded.character,
@@ -320,6 +321,10 @@ def run_batch(
             probe_iou=probe,
             gate=iou_gate,
             cap=cap,
+            cjk_entries=cjk,
+            graphics_lookup=lambda component: mmh.get(component)
+            or lookup.char_graphics_lookup(component),
+            dictionary_lookup=lookup.char_dictionary_lookup,
         )
 
         if isinstance(result, PlanUnsupported):
