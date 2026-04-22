@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from functools import cache
+
+from scipy.optimize import linear_sum_assignment
 
 from olik_font.compose.flatten import flatten_strokes
 from olik_font.compose.iou import iou_report_for
@@ -227,23 +228,7 @@ def _optimal_bbox_scores(
         tuple(float(iou_report_for([composed], [target])["mean"]) for target in mmh_bboxes)
         for composed in composed_bboxes
     )
-
-    @cache
-    def _best(i: int, mask: int) -> tuple[float, tuple[int, ...]]:
-        if i == n:
-            return 0.0, ()
-
-        best_total = -1.0
-        best_assign: tuple[int, ...] = ()
-        for j in range(n):
-            if not mask & (1 << j):
-                continue
-            rest_total, rest_assign = _best(i + 1, mask ^ (1 << j))
-            total = matrix[i][j] + rest_total
-            if total > best_total:
-                best_total = total
-                best_assign = (j, *rest_assign)
-        return best_total, best_assign
-
-    _, assignment = _best(0, (1 << n) - 1)
-    return tuple(matrix[i][j] for i, j in enumerate(assignment))
+    cost = [[1.0 - score for score in row] for row in matrix]
+    row_ind, col_ind = linear_sum_assignment(cost)
+    assignment = {int(i): int(j) for i, j in zip(row_ind, col_ind, strict=True)}
+    return tuple(matrix[i][assignment[i]] for i in range(n))

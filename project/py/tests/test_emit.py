@@ -3,9 +3,11 @@ from pathlib import Path
 
 import jsonschema
 import pytest
+from scipy.optimize import linear_sum_assignment
 
 from olik_font.compose.walk import compose_transforms
 from olik_font.decompose.instance import build_instance_tree
+from olik_font.emit import record as record_mod
 from olik_font.emit.library import library_to_dict
 from olik_font.emit.record import build_glyph_record
 from olik_font.emit.trace import trace_to_dict
@@ -66,6 +68,26 @@ def test_record_carries_iou_report(lib_and_plan):
     record = build_glyph_record("明", resolved, cs, lib, mmh_char=chars["明"])
     iou = record["metadata"]["iou_report"]
     assert "mean" in iou and "min" in iou and "per_stroke" in iou
+
+
+def test_optimal_bbox_scores_uses_hungarian_solver(monkeypatch):
+    composed = ("M0,0 L10,0 L10,10 L0,10 Z", "M20,20 L30,20 L30,30 L20,30 Z")
+    mmh = (composed[1], composed[0])
+    calls: list[tuple[tuple[tuple[float, ...], ...], tuple[tuple[float, ...], ...]]] = []
+
+    def _fake_assignment(cost):
+        rows, cols = linear_sum_assignment(cost)
+        calls.append((tuple(tuple(row) for row in cost), tuple(zip(rows, cols, strict=True))))
+        return rows, cols
+
+    monkeypatch.setattr(record_mod, "linear_sum_assignment", _fake_assignment)
+
+    scores = record_mod._optimal_bbox_scores(composed, mmh)
+
+    assert len(scores) == 2
+    assert min(scores) > 0.99
+    assert calls
+    assert calls[0][1] == ((0, 1), (1, 0))
 
 
 def test_trace_to_dict_shape():
