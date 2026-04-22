@@ -26,14 +26,18 @@ export function GlyphDetail() {
   const char = id ? decodeURIComponent(id) : "";
   const navigate = useNavigate();
 
-  const { data: one, isLoading } = useOne({ resource: "glyph", id: char });
-  const { data: list } = useList({
+  const { query: oneQuery } = useOne({ resource: "glyph", id: char });
+  const one = oneQuery.data;
+  const isLoading = oneQuery.isLoading;
+  const { query: listQuery } = useList({
     resource: "glyph",
     filters: [{ field: "status", operator: "in", value: ["needs_review"] }],
     sorters: [{ field: "iou_mean", order: "desc" }],
     pagination: { pageSize: 500 },
   });
-  const { mutate: updateGlyph, isPending: updating } = useUpdate();
+  const list = listQuery.data;
+  const { mutate: updateGlyph, mutation } = useUpdate();
+  const updating = mutation.isPending;
 
   const [reviewNote, setReviewNote] = useState("");
   useEffect(() => {

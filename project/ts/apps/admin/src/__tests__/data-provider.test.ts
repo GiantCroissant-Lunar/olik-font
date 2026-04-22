@@ -31,7 +31,7 @@ describe("createDataProvider", () => {
         { field: "iou_mean", operator: "between", value: [0.5, 0.9] },
       ],
       sorters: [{ field: "iou_mean", order: "desc" }],
-      pagination: { current: 1, pageSize: 50 },
+      pagination: { currentPage: 1, pageSize: 50 },
     });
     expect(db.listGlyphs).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -73,7 +73,7 @@ describe("createDataProvider", () => {
     const dp = createDataProvider(db);
     const result = await dp.getList({
       resource: "style_variant",
-      pagination: { current: 1, pageSize: 50 },
+      pagination: { currentPage: 1, pageSize: 50 },
     });
     expect(result).toEqual({ data: [], total: 0 });
   });

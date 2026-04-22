@@ -43,14 +43,15 @@ export function GlyphList() {
     return out;
   }, [statuses, iouRange, strokeRange, radical]);
 
-  const { data, isLoading } = useList({
+  const { query } = useList({
     resource: "glyph",
     filters,
     sorters: [{ field: "iou_mean", order: "desc" }],
     pagination: { pageSize: 200 },
   });
 
-  const rows = data?.data ?? [];
+  const isLoading = query.isLoading;
+  const rows = query.data?.data ?? [];
 
   return (
     <Stack p="md">
