@@ -12,6 +12,7 @@ dependencies = [
   "python-dateutil>=2.9",  # required by quicktype-generated types
   "pyyaml>=6.0",
   "requests>=2.31",
+  "scipy>=1.11",
   "surrealdb>=1.0,<2.0",
   "svgpathtools>=1.6",
   "shapely>=2.0",
