@@ -171,17 +171,17 @@ def apply_top_bottom(
     weight_top: float = 0.49,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    # The rest of the pipeline uses MMH's y-up convention (y=0 bottom,
-    # y=1024 top). The render-time y-flip in renderers (preview-glyph.py,
-    # flow-nodes, quickview) depends on this: it maps y=1024 in compose
-    # space to y=0 in SVG space (visual top). Therefore the bbox for the
-    # VISUAL TOP must sit at HIGH y values; the bbox for the VISUAL
-    # BOTTOM at LOW y values.
-    top_bbox = _slot_bbox_top_bottom(0, glyph_bbox, weight_top=weight_top, gap=gap)
-    bottom_bbox = _slot_bbox_top_bottom(1, glyph_bbox, weight_top=weight_top, gap=gap)
+    del weight_top, gap
+    slot_0 = _slot_bbox_top_bottom(0, glyph_bbox)
+    slot_1 = _slot_bbox_top_bottom(1, glyph_bbox)
 
-    top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_bbox))
-    bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_bbox))
+    # Plan 10.1: top component hugs top-center of its slot; bottom
+    # hugs bottom-center of its slot.
+    top_target = fit_in_slot(CANONICAL, slot_0, "top-center")
+    bottom_target = fit_in_slot(CANONICAL, slot_1, "bottom-center")
+
+    top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_target))
+    bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_target))
 
     constraints: tuple[Primitive, ...] = (
         AlignX(targets=(f"{top.instance_id}.center", f"{bottom.instance_id}.center")),
@@ -189,7 +189,7 @@ def apply_top_bottom(
         AnchorDistance(
             from_=f"{top.instance_id}.bottom",
             to=f"{bottom.instance_id}.top",
-            value=gap,
+            value=_TOP_BOTTOM_GAP,
         ),
     )
     return top_out, bottom_out, constraints
