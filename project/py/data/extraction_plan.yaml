@@ -114,33 +114,43 @@ glyphs:
     children:
       - prototype_ref: proto:sun
         mode: keep
+        source_stroke_indices: [0, 1, 2, 3]
       - prototype_ref: proto:moon
         mode: keep
+        source_stroke_indices: [4, 5, 6, 7]
 
   清:
     children:
       - prototype_ref: proto:water_3dots
         mode: keep
+        source_stroke_indices: [0, 1, 2]
       - prototype_ref: proto:qing
         mode: refine
         children:
           - prototype_ref: proto:sheng_in_qing
             mode: keep
+            source_stroke_indices: [3, 4, 5, 6]
           - prototype_ref: proto:moon_in_qing
             mode: keep
+            source_stroke_indices: [7, 8, 9, 10]
 
   國:
     children:
       - prototype_ref: proto:enclosure_box
         mode: keep
+        source_stroke_indices: [0, 1, 10]
       - prototype_ref: proto:huo
         mode: keep
+        source_stroke_indices: [2, 3, 4, 5, 6, 7, 8, 9]
 
   森:
     children:
       - prototype_ref: proto:tree
         mode: keep
+        source_stroke_indices: [0, 1, 2, 3]
       - prototype_ref: proto:tree
         mode: keep
+        source_stroke_indices: [4, 5, 6, 7]
       - prototype_ref: proto:tree
         mode: keep
+        source_stroke_indices: [8, 9, 10, 11]
