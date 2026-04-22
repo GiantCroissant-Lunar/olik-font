@@ -1,3 +1,27 @@
-default: 10
-木: 20
-口: 20
+default: 50
+# Common components appear in hundreds of chars; bump their caps.
+木: 500
+口: 500
+日: 300
+水: 200
+氵: 200
+火: 200
+人: 300
+女: 200
+土: 200
+金: 200
+# Single-stroke CJK primitives appear in thousands of chars.
+㇐: 9999
+㇑: 9999
+㇒: 9999
+㇔: 9999
+㇓: 9999
+㇚: 9999
+㇟: 9999
+㇙: 9999
+㇉: 9999
+㇆: 9999
+㇇: 9999
+㇈: 9999
+㇗: 9999
+一: 9999

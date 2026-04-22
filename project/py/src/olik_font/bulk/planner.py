@@ -105,10 +105,27 @@ def _extract_variant_prototype(
     slot: BBox,
     mmh: dict,
 ) -> tuple[PrototypePlan, variant_match.MatchResult]:
-    """Mint a variant prototype using the MMH partition's own indices."""
-    canonical_strokes = _strokes_of(mmh[component_name])
+    """Mint a variant prototype using the MMH partition's own indices.
+
+    Variant stroke_indices come from the partition — placement is already
+    determined. The Hungarian match here is a diagnostic IoU score; when
+    we don't have a standalone canonical for the component (common for
+    single-stroke CJK primitives like U+31D0 / U+31D4 / U+31DA), we skip
+    the probe and mint anyway. Missing canonical geometry never blocks
+    variant minting.
+    """
     partitioned_strokes = [context_strokes[i] for i in partition_indices]
-    match = variant_match.match_in_slot(canonical_strokes, partitioned_strokes, slot)
+    if component_name in mmh:
+        canonical_strokes = _strokes_of(mmh[component_name])
+        match = variant_match.match_in_slot(canonical_strokes, partitioned_strokes, slot)
+    else:
+        match = variant_match.MatchResult(
+            pairs=(),
+            mean_iou=0.0,
+            min_iou=0.0,
+            k_gt_m=False,
+            below_floor=False,
+        )
     variant = PrototypePlan(
         id=proto_id,
         name=component_name,
@@ -130,6 +147,77 @@ def _measure_slot(host_strokes: list[str], indices: tuple[int, ...]) -> BBox:
     if not indices:
         return (0.0, 0.0, 0.0, 0.0)
     return union_bbox(tuple(bbox_of_paths([host_strokes[i]]) for i in indices))
+
+
+def _build_single_component_plan(
+    char: str,
+    comp_name: str,
+    host_stroke_count: int,
+    index: ProtoIndex,
+    slot: BBox,
+    probe_iou: Callable[[str, str, BBox], float],
+    gate: float,
+    cap: VariantCap,
+    mmh: dict,
+) -> PlanOk | PlanFailed:
+    """Build a plan for a single-component decomposition.
+
+    This is the "char IS its sole prototype" case — atomic glyphs like 一, or
+    chars whose cjk-decomp has only one component and MMH declined to
+    partition. All host strokes belong to one prototype.
+    """
+    source_indices = tuple(range(host_stroke_count))
+    decision = decide_prototype(
+        component_char=comp_name,
+        context_char=char,
+        slot=slot,
+        index=index,
+        probe_iou=probe_iou,
+        gate=gate,
+        cap=cap,
+    )
+    if decision.cap_exceeded:
+        return PlanFailed(reason=f"variant cap exceeded for {comp_name}")
+
+    new_protos: list[PrototypePlan] = []
+    variant_edges: list[tuple[str, str]] = []
+
+    if decision.is_new_canonical:
+        # Use the HOST's strokes as the canonical geometry. This is the "a 一
+        # glyph's prototype IS 一" pattern — we don't need (and can't find) a
+        # standalone MMH entry for a 1-component carve of the host.
+        proto = PrototypePlan(
+            id=decision.chosen_id,
+            name=comp_name,
+            from_char=char,
+            stroke_indices=source_indices,
+            roles=("meaning",),
+            anchors={},
+        )
+        new_protos.append(proto)
+    elif decision.is_new_variant:
+        variant = PrototypePlan(
+            id=decision.chosen_id,
+            name=comp_name,
+            from_char=char,
+            stroke_indices=source_indices,
+            roles=("meaning",),
+            anchors={},
+        )
+        new_protos.append(variant)
+        if decision.canonical_for_edge is not None:
+            variant_edges.append((variant.id, decision.canonical_for_edge))
+
+    child = GlyphNodePlan(
+        prototype_ref=decision.chosen_id,
+        mode="keep",
+        source_stroke_indices=source_indices,
+    )
+    return PlanOk(
+        glyph_plan=GlyphPlan(children=(child,)),
+        new_prototypes=new_protos,
+        variant_edges=variant_edges,
+    )
 
 
 def _component_name(component: object) -> str:
@@ -208,10 +296,31 @@ def plan_char(
     if len(components) == 0:
         return PlanUnsupported(missing_op=cjk_entry.get("operator", "") or "<empty>")
 
+    host_strokes = _strokes_of(mmh[char])
+
+    # Single-component decomposition (atomic chars like 一, or "char IS its
+    # sole prototype" cases): no partition needed — the char itself is the
+    # one prototype. This is the valid answer when MMH's matches is [None]
+    # or [] for a 1-component decomp.
+    if len(components) == 1 and top_level_partition(matches) is None:
+        comp_name = _component_name(components[0])
+        # Treat the whole host as the sole prototype. If the component name
+        # differs from the host char (e.g. 一 decomposes to ㇐), we still
+        # use ALL host strokes since there is nothing to partition.
+        return _build_single_component_plan(
+            char=char,
+            comp_name=comp_name or char,
+            host_stroke_count=len(host_strokes),
+            index=index,
+            slot=_measure_slot(host_strokes, tuple(range(len(host_strokes)))),
+            probe_iou=probe_iou,
+            gate=gate,
+            cap=cap,
+            mmh=mmh,
+        )
+
     if top_level_partition(matches) is None:
         return PlanFailed(reason=f"MMH partition shape mismatch for {char}: None")
-
-    host_strokes = _strokes_of(mmh[char])
     new_protos: list[PrototypePlan] = []
     variant_edges: list[tuple[str, str]] = []
     working_index = ProtoIndex(prototypes=list(index.prototypes))
