@@ -201,13 +201,19 @@ def apply_enclose(
     glyph_bbox: BBox,
     padding: float = 100.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    outer_bbox = _slot_bbox_enclose(0, glyph_bbox, padding=padding)
-    inner_bbox = _slot_bbox_enclose(1, glyph_bbox, padding=padding)
+    del padding
+    outer_bbox = _slot_bbox_enclose(0, glyph_bbox)
+    inner_slot = _slot_bbox_enclose(1, glyph_bbox)
+
+    # Plan 10.1: outer fills the full glyph (no letterbox); inner is
+    # aspect-preserving centered inside the padded frame.
+    inner_target = fit_in_slot(CANONICAL, inner_slot, "center")
+
     outer_out = replace(outer, transform=bbox_to_bbox_affine(CANONICAL, outer_bbox))
-    inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_bbox))
+    inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_target))
 
     constraints: tuple[Primitive, ...] = (
-        Inside(target=inner.instance_id, frame=outer.instance_id, padding=padding),
+        Inside(target=inner.instance_id, frame=outer.instance_id, padding=_ENCLOSE_PADDING),
         AlignX(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
         AlignY(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
     )
