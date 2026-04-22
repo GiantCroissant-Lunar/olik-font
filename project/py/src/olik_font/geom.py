@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+from functools import lru_cache
 
 from svgpathtools import parse_path
 
@@ -117,13 +118,18 @@ def bbox_of_paths(paths: list[str] | tuple[str, ...]) -> BBox:
     xmin = ymin = float("inf")
     xmax = ymax = float("-inf")
     for d in paths:
-        p = parse_path(d)
-        b = p.bbox()  # (xmin, xmax, ymin, ymax)
+        b = _bbox_of_path(d)
         xmin = min(xmin, b[0])
         xmax = max(xmax, b[1])
         ymin = min(ymin, b[2])
         ymax = max(ymax, b[3])
     return (xmin, ymin, xmax, ymax)
+
+
+@lru_cache(maxsize=131072)
+def _bbox_of_path(path_d: str) -> tuple[float, float, float, float]:
+    p = parse_path(path_d)
+    return p.bbox()
 
 
 def union_bbox(bboxes: tuple[BBox, ...]) -> BBox:

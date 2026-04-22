@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +15,10 @@ DictionaryLookup = Callable[[str], Any | None]
 
 _PY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CARVED_COMPONENTS = _PY_ROOT / "data" / "carved_components.json"
+_FAILED_COMPONENTS: set[tuple[str, str]] = set()
 
 
+@lru_cache(maxsize=4)
 def load_carved_components(path: Path = DEFAULT_CARVED_COMPONENTS) -> dict[str, MmhChar]:
     """Load the carved-component cache into the MMH graphics shape."""
     if not path.exists():
@@ -58,6 +61,12 @@ def carve_component(
     dictionary_lookup: DictionaryLookup,
     cache_path: Path = DEFAULT_CARVED_COMPONENTS,
 ) -> MmhChar:
+    failed_key = (str(cache_path), component_name)
+    if failed_key in _FAILED_COMPONENTS:
+        raise RuntimeError(
+            f"no containing host with measured matches for component '{component_name}'"
+        )
+
     cached = load_carved_components(cache_path).get(component_name)
     if cached is not None:
         return cached
@@ -83,6 +92,7 @@ def carve_component(
         candidates.append((len(host_path), host_char, host_path, host_graphics, stroke_indices))
 
     if not candidates:
+        _FAILED_COMPONENTS.add(failed_key)
         raise RuntimeError(
             f"no containing host with measured matches for component '{component_name}'"
         )
@@ -145,6 +155,8 @@ def _write_cached_component(
         json.dumps(raw, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    load_carved_components.cache_clear()
+    _FAILED_COMPONENTS.discard((str(path), component_name))
 
 
 def _coerce_graphics(entry: MmhChar | dict[str, Any] | None) -> MmhChar | None:
