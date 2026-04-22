@@ -1,11 +1,9 @@
 """Auto-plan a single character from its cjk-decomp entry + MMH data.
 
 Placement comes from MMH's `matches` partition, not from any preset
-vocabulary. For each top-level component the planner reads the stroke
-indices the partition assigns to it, measures the union bbox of those
-strokes (that is the slot), and emits a GlyphNodePlan carrying
-`source_stroke_indices` directly. Compose later reads those indices
-and derives the affine transform via `measure_instance_transform`.
+vocabulary. For each component instance the planner reads the measured
+stroke indices from MMH, carries them on the GlyphNodePlan, and emits
+`mode="refine"` subtrees when MMH exposes nested component partitions.
 
 The Hungarian matcher in `variant_match.py` is used only as an IoU
 probe to decide canonical-reuse vs. variant-extraction; both sides of
@@ -15,11 +13,13 @@ that probe are measured (the canonical against the partitioned slot).
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import Any
 
 from olik_font.bulk import variant_match
-from olik_font.bulk.mmh_partition import top_level_partition
-from olik_font.bulk.reuse import ProtoIndex, decide_prototype
+from olik_font.bulk.mmh_partition import nested_partition, top_level_partition
+from olik_font.bulk.reuse import ProtoIndex, decide_prototype, name_to_slug
 from olik_font.geom import bbox_of_paths, union_bbox
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
 from olik_font.types import BBox
@@ -103,6 +103,48 @@ def _measure_slot(host_strokes: list[str], indices: tuple[int, ...]) -> BBox:
     return union_bbox(tuple(bbox_of_paths([host_strokes[i]]) for i in indices))
 
 
+def _component_name(component: object) -> str:
+    if isinstance(component, dict):
+        return str(component.get("char") or "")
+    return str(component)
+
+
+def _component_children(component: object) -> list[object]:
+    if not isinstance(component, dict):
+        return []
+    raw_children = component.get("components")
+    if not isinstance(raw_children, list):
+        return []
+    return list(raw_children)
+
+
+def _components_for_entry(cjk_entry: dict[str, Any]) -> list[object]:
+    raw_tree = cjk_entry.get("component_tree")
+    if isinstance(raw_tree, list):
+        return list(raw_tree)
+
+    raw_components = cjk_entry.get("components", [])
+    if isinstance(raw_components, tuple):
+        return list(raw_components)
+    if isinstance(raw_components, list):
+        return list(raw_components)
+    return []
+
+
+def _partition_at_path(
+    matches: list[list[int] | None] | None,
+    path: tuple[int, ...],
+) -> list[list[int]] | None:
+    if not path:
+        return top_level_partition(matches)
+    return nested_partition(matches, path_prefix=path)
+
+
+def _refine_proto_ref(char: str, path: tuple[int, ...]) -> str:
+    suffix = "_".join(str(idx) for idx in path) if path else "root"
+    return f"proto:refine_{name_to_slug(char)}_{suffix}"
+
+
 def plan_char(
     char: str,
     cjk_entry: dict,
@@ -128,66 +170,110 @@ def plan_char(
     if char not in mmh:
         return PlanFailed(reason=f"MMH missing {char}")
 
-    components: list[str] = list(cjk_entry.get("components", []))
+    components = _components_for_entry(cjk_entry)
     if len(components) == 0:
         return PlanUnsupported(missing_op=cjk_entry.get("operator", "") or "<empty>")
 
-    partition = top_level_partition(matches)
-    if partition is None or len(partition) != len(components):
-        return PlanFailed(reason=f"MMH partition shape mismatch for {char}: {partition}")
+    if top_level_partition(matches) is None:
+        return PlanFailed(reason=f"MMH partition shape mismatch for {char}: None")
 
     host_strokes = _strokes_of(mmh[char])
     new_protos: list[PrototypePlan] = []
     variant_edges: list[tuple[str, str]] = []
-    child_nodes: list[GlyphNodePlan] = []
-    minted_variant_ids: set[str] = set()
+    working_index = ProtoIndex(prototypes=list(index.prototypes))
 
-    for i, comp_name in enumerate(components):
-        partition_indices = tuple(partition[i])
-        slot = _measure_slot(host_strokes, partition_indices)
+    def build_nodes(
+        current_components: list[object], path: tuple[int, ...]
+    ) -> PlanFailed | list[GlyphNodePlan]:
+        current_partition = _partition_at_path(matches, path)
+        if current_partition is None:
+            return PlanFailed(
+                reason=f"MMH partition shape mismatch for {char}: {current_partition}"
+            )
 
-        decision = decide_prototype(
-            component_char=comp_name,
-            context_char=char,
-            slot=slot,
-            index=index,
-            probe_iou=probe_iou,
-            gate=gate,
-            cap=cap,
-        )
-        if decision.cap_exceeded:
-            return PlanFailed(reason=f"variant cap exceeded for {comp_name}")
+        expanded_components = list(current_components)
+        if len(current_partition) > len(expanded_components):
+            if len(expanded_components) != 1:
+                return PlanFailed(
+                    reason=f"MMH partition shape mismatch for {char}: {current_partition}"
+                )
+            expanded_components = [deepcopy(expanded_components[0]) for _ in current_partition]
 
-        if decision.is_new_canonical:
-            try:
-                proto = _extract_canonical_prototype(comp_name, decision.chosen_id, mmh)
-            except RuntimeError as exc:
-                return PlanFailed(reason=str(exc))
-            new_protos.append(proto)
-        elif decision.is_new_variant and decision.chosen_id not in minted_variant_ids:
-            if comp_name not in mmh:
-                return PlanFailed(reason=f"variant mint needs MMH entry for {comp_name}")
-            variant, _match = _extract_variant_prototype(
-                component_name=comp_name,
+        if len(current_partition) != len(expanded_components):
+            return PlanFailed(
+                reason=f"MMH partition shape mismatch for {char}: {current_partition}"
+            )
+
+        child_nodes: list[GlyphNodePlan] = []
+        for i, component in enumerate(expanded_components):
+            child_path = (*path, i)
+            comp_name = _component_name(component)
+            comp_children = _component_children(component)
+            child_partition = _partition_at_path(matches, child_path)
+
+            if comp_children and child_partition is not None:
+                nested_nodes = build_nodes(comp_children, child_path)
+                if isinstance(nested_nodes, PlanFailed):
+                    return nested_nodes
+                child_nodes.append(
+                    GlyphNodePlan(
+                        prototype_ref=_refine_proto_ref(char, child_path),
+                        mode="refine",
+                        children=tuple(nested_nodes),
+                    )
+                )
+                continue
+
+            partition_indices = tuple(current_partition[i])
+            slot = _measure_slot(host_strokes, partition_indices)
+            decision = decide_prototype(
+                component_char=comp_name,
                 context_char=char,
-                proto_id=decision.chosen_id,
-                partition_indices=partition_indices,
-                context_strokes=host_strokes,
                 slot=slot,
-                mmh=mmh,
+                index=working_index,
+                probe_iou=probe_iou,
+                gate=gate,
+                cap=cap,
             )
-            new_protos.append(variant)
-            if decision.canonical_for_edge is not None:
-                variant_edges.append((variant.id, decision.canonical_for_edge))
-            minted_variant_ids.add(decision.chosen_id)
+            if decision.cap_exceeded:
+                return PlanFailed(reason=f"variant cap exceeded for {comp_name}")
 
-        child_nodes.append(
-            GlyphNodePlan(
-                prototype_ref=decision.chosen_id,
-                mode="keep",
-                source_stroke_indices=partition_indices,
+            if decision.is_new_canonical:
+                try:
+                    proto = _extract_canonical_prototype(comp_name, decision.chosen_id, mmh)
+                except RuntimeError as exc:
+                    return PlanFailed(reason=str(exc))
+                new_protos.append(proto)
+                working_index.prototypes.append(proto)
+            elif decision.is_new_variant:
+                if comp_name not in mmh:
+                    return PlanFailed(reason=f"variant mint needs MMH entry for {comp_name}")
+                variant, _match = _extract_variant_prototype(
+                    component_name=comp_name,
+                    context_char=char,
+                    proto_id=decision.chosen_id,
+                    partition_indices=partition_indices,
+                    context_strokes=host_strokes,
+                    slot=slot,
+                    mmh=mmh,
+                )
+                new_protos.append(variant)
+                if decision.canonical_for_edge is not None:
+                    variant_edges.append((variant.id, decision.canonical_for_edge))
+                working_index.prototypes.append(variant)
+
+            child_nodes.append(
+                GlyphNodePlan(
+                    prototype_ref=decision.chosen_id,
+                    mode="keep",
+                    source_stroke_indices=partition_indices,
+                )
             )
-        )
+        return child_nodes
+
+    child_nodes = build_nodes(components, ())
+    if isinstance(child_nodes, PlanFailed):
+        return child_nodes
 
     glyph_plan = GlyphPlan(children=tuple(child_nodes))
     return PlanOk(

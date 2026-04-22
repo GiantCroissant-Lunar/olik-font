@@ -76,7 +76,34 @@ def _record_key(value: object, table: str) -> str:
 
 def _load_cjk_entries(path: Path = _DEFAULT_CJK) -> dict[str, dict[str, Any]]:
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return raw.get("entries", {})
+    entries = raw.get("entries", {})
+
+    def build_component_tree(component_char: str, seen: frozenset[str]) -> dict[str, Any]:
+        if component_char in seen:
+            return {"char": component_char, "components": []}
+
+        child_entry = entries.get(component_char)
+        raw_children = child_entry.get("components", []) if isinstance(child_entry, dict) else []
+        if not isinstance(raw_children, list) or not raw_children:
+            return {"char": component_char, "components": []}
+
+        next_seen = seen | {component_char}
+        return {
+            "char": component_char,
+            "operator": child_entry.get("operator"),
+            "components": [build_component_tree(child, next_seen) for child in raw_children],
+        }
+
+    enriched: dict[str, dict[str, Any]] = {}
+    for char, entry in entries.items():
+        components = entry.get("components", []) if isinstance(entry, dict) else []
+        enriched[char] = {
+            **entry,
+            "component_tree": [
+                build_component_tree(comp, frozenset({char})) for comp in components
+            ],
+        }
+    return enriched
 
 
 def _proto_index_from_db(db) -> ProtoIndex:
