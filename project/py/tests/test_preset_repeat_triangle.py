@@ -9,28 +9,35 @@ def _leaf(iid):
     )
 
 
-def test_three_instances_placed_at_triangle_vertices():
-    # y-up convention (see apply_top_bottom): visual top = high y,
-    # visual bottom = low y. Triangle vertices therefore have the
-    # top-center cell at y≈768 and the two bottom cells at y≈256.
+def test_three_instances_centered_inside_tall_triangle_cells_with_aspect_preserved():
+    # Force non-square repeat_triangle cells so Plan 10.1's centered
+    # aspect-preserving fit is observable. In a 1024x2048 glyph, each
+    # triangle cell is 512x1024. CANONICAL is square, so each instance
+    # must fit as a 512x512 square centered vertically inside its cell.
     a, b, c = _leaf("inst:t1"), _leaf("inst:t2"), _leaf("inst:t3")
-    resolved, _constraints = apply_repeat_triangle((a, b, c), glyph_bbox=(0, 0, 1024, 1024))
+    resolved, _constraints = apply_repeat_triangle((a, b, c), glyph_bbox=(0, 0, 1024, 2048))
     assert len(resolved) == 3
 
-    # instance 0: top-center — canonical center (512, 512) maps to around (512, 768)
-    c0 = apply_affine_to_point(resolved[0].transform, (512.0, 512.0))
-    assert abs(c0[0] - 512.0) < 1e-6
-    assert abs(c0[1] - 768.0) < 1e-6
+    # instance 0: top-center cell (256, 1024, 768, 2048) ->
+    # fitted square (256, 1280, 768, 1792).
+    p0_lo = apply_affine_to_point(resolved[0].transform, (0.0, 0.0))
+    p0_hi = apply_affine_to_point(resolved[0].transform, (1024.0, 1024.0))
+    assert p0_lo == (256.0, 1280.0)
+    assert p0_hi == (768.0, 1792.0)
 
-    # instance 1: bottom-left — around (256, 256)
-    c1 = apply_affine_to_point(resolved[1].transform, (512.0, 512.0))
-    assert abs(c1[0] - 256.0) < 1e-6
-    assert abs(c1[1] - 256.0) < 1e-6
+    # instance 1: bottom-left cell (0, 0, 512, 1024) ->
+    # fitted square (0, 256, 512, 768).
+    p1_lo = apply_affine_to_point(resolved[1].transform, (0.0, 0.0))
+    p1_hi = apply_affine_to_point(resolved[1].transform, (1024.0, 1024.0))
+    assert p1_lo == (0.0, 256.0)
+    assert p1_hi == (512.0, 768.0)
 
-    # instance 2: bottom-right — around (768, 256)
-    c2 = apply_affine_to_point(resolved[2].transform, (512.0, 512.0))
-    assert abs(c2[0] - 768.0) < 1e-6
-    assert abs(c2[1] - 256.0) < 1e-6
+    # instance 2: bottom-right cell (512, 0, 1024, 1024) ->
+    # fitted square (512, 256, 1024, 768).
+    p2_lo = apply_affine_to_point(resolved[2].transform, (0.0, 0.0))
+    p2_hi = apply_affine_to_point(resolved[2].transform, (1024.0, 1024.0))
+    assert p2_lo == (512.0, 256.0)
+    assert p2_hi == (1024.0, 768.0)
 
 
 def test_constraints_include_repeat_and_pairwise_avoid_overlap():

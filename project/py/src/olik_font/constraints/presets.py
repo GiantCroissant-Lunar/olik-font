@@ -18,7 +18,7 @@ from olik_font.constraints.primitives import (
     OrderY,
     Primitive,
 )
-from olik_font.geom import bbox_to_bbox_affine
+from olik_font.geom import bbox_to_bbox_affine, fit_in_slot
 from olik_font.types import BBox, InstancePlacement
 
 CANONICAL: BBox = (0.0, 0.0, 1024.0, 1024.0)
@@ -138,11 +138,19 @@ def apply_left_right(
     weight_l: float = 400.0 / 1024.0,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    left_bbox = _slot_bbox_left_right(0, glyph_bbox, weight_l=weight_l, gap=gap)
-    right_bbox = _slot_bbox_left_right(1, glyph_bbox, weight_l=weight_l, gap=gap)
+    # Plan 09.1 pinned weight/gap to module-level constants; keep the
+    # keyword signature for call-site compatibility but ignore overrides.
+    del weight_l, gap
+    slot_0 = _slot_bbox_left_right(0, glyph_bbox)
+    slot_1 = _slot_bbox_left_right(1, glyph_bbox)
 
-    left_out = replace(left, transform=bbox_to_bbox_affine(CANONICAL, left_bbox))
-    right_out = replace(right, transform=bbox_to_bbox_affine(CANONICAL, right_bbox))
+    # Plan 10.1: anchor canonical top-left inside each slot so radicals
+    # don't get non-uniformly stretched.
+    left_target = fit_in_slot(CANONICAL, slot_0, "top-left")
+    right_target = fit_in_slot(CANONICAL, slot_1, "top-left")
+
+    left_out = replace(left, transform=bbox_to_bbox_affine(CANONICAL, left_target))
+    right_out = replace(right, transform=bbox_to_bbox_affine(CANONICAL, right_target))
 
     constraints: tuple[Primitive, ...] = (
         AlignY(targets=(f"{left.instance_id}.center", f"{right.instance_id}.center")),
@@ -150,7 +158,7 @@ def apply_left_right(
         AnchorDistance(
             from_=f"{left.instance_id}.right_edge",
             to=f"{right.instance_id}.left_edge",
-            value=gap,
+            value=_LEFT_RIGHT_GAP,
         ),
     )
     return left_out, right_out, constraints
@@ -163,17 +171,17 @@ def apply_top_bottom(
     weight_top: float = 0.49,
     gap: float = 20.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    # The rest of the pipeline uses MMH's y-up convention (y=0 bottom,
-    # y=1024 top). The render-time y-flip in renderers (preview-glyph.py,
-    # flow-nodes, quickview) depends on this: it maps y=1024 in compose
-    # space to y=0 in SVG space (visual top). Therefore the bbox for the
-    # VISUAL TOP must sit at HIGH y values; the bbox for the VISUAL
-    # BOTTOM at LOW y values.
-    top_bbox = _slot_bbox_top_bottom(0, glyph_bbox, weight_top=weight_top, gap=gap)
-    bottom_bbox = _slot_bbox_top_bottom(1, glyph_bbox, weight_top=weight_top, gap=gap)
+    del weight_top, gap
+    slot_0 = _slot_bbox_top_bottom(0, glyph_bbox)
+    slot_1 = _slot_bbox_top_bottom(1, glyph_bbox)
 
-    top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_bbox))
-    bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_bbox))
+    # Plan 10.1: top component hugs top-center of its slot; bottom
+    # hugs bottom-center of its slot.
+    top_target = fit_in_slot(CANONICAL, slot_0, "top-center")
+    bottom_target = fit_in_slot(CANONICAL, slot_1, "bottom-center")
+
+    top_out = replace(top, transform=bbox_to_bbox_affine(CANONICAL, top_target))
+    bottom_out = replace(bottom, transform=bbox_to_bbox_affine(CANONICAL, bottom_target))
 
     constraints: tuple[Primitive, ...] = (
         AlignX(targets=(f"{top.instance_id}.center", f"{bottom.instance_id}.center")),
@@ -181,7 +189,7 @@ def apply_top_bottom(
         AnchorDistance(
             from_=f"{top.instance_id}.bottom",
             to=f"{bottom.instance_id}.top",
-            value=gap,
+            value=_TOP_BOTTOM_GAP,
         ),
     )
     return top_out, bottom_out, constraints
@@ -193,13 +201,19 @@ def apply_enclose(
     glyph_bbox: BBox,
     padding: float = 100.0,
 ) -> tuple[InstancePlacement, InstancePlacement, tuple[Primitive, ...]]:
-    outer_bbox = _slot_bbox_enclose(0, glyph_bbox, padding=padding)
-    inner_bbox = _slot_bbox_enclose(1, glyph_bbox, padding=padding)
+    del padding
+    outer_bbox = _slot_bbox_enclose(0, glyph_bbox)
+    inner_slot = _slot_bbox_enclose(1, glyph_bbox)
+
+    # Plan 10.1: outer fills the full glyph (no letterbox); inner is
+    # aspect-preserving centered inside the padded frame.
+    inner_target = fit_in_slot(CANONICAL, inner_slot, "center")
+
     outer_out = replace(outer, transform=bbox_to_bbox_affine(CANONICAL, outer_bbox))
-    inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_bbox))
+    inner_out = replace(inner, transform=bbox_to_bbox_affine(CANONICAL, inner_target))
 
     constraints: tuple[Primitive, ...] = (
-        Inside(target=inner.instance_id, frame=outer.instance_id, padding=padding),
+        Inside(target=inner.instance_id, frame=outer.instance_id, padding=_ENCLOSE_PADDING),
         AlignX(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
         AlignY(targets=(f"{outer.instance_id}.center", f"{inner.instance_id}.center")),
     )
@@ -229,8 +243,9 @@ def apply_repeat_triangle(
     ]
 
     resolved: list[InstancePlacement] = []
-    for inst, bbox in zip(instances, positions, strict=False):
-        resolved.append(replace(inst, transform=bbox_to_bbox_affine(CANONICAL, bbox)))
+    for inst, slot in zip(instances, positions, strict=False):
+        target = fit_in_slot(CANONICAL, slot, "center")
+        resolved.append(replace(inst, transform=bbox_to_bbox_affine(CANONICAL, target)))
 
     constraints: list[Primitive] = [
         Repeat(prototype_ref=instances[0].prototype_ref, count=3, layout_hint="triangle"),

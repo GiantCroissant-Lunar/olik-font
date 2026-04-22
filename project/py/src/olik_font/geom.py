@@ -156,3 +156,69 @@ def normalize_paths_to_canonical(
     fwd = bbox_to_bbox_affine(src, canonical_bbox)
     normalized = tuple(apply_affine_to_path(fwd, d) for d in paths)
     return normalized, fwd
+
+
+def fit_in_slot(
+    src: BBox,
+    dst: BBox,
+    anchor: str,
+) -> BBox:
+    """Return the sub-bbox of `dst` preserving `src`'s aspect ratio,
+    anchored at the named position within `dst`.
+
+    Used by Plan 10.1's preset adapters to stop non-uniform slot
+    stretching. The caller then passes the returned bbox to
+    `bbox_to_bbox_affine(src, result)`, which produces a uniform-scale
+    affine (because aspect(src) == aspect(result) by construction).
+
+    y-up convention: `dst[3]` is the visual top; `dst[1]` is the
+    visual bottom. Anchor names describe visual position:
+
+    - `top-left`: left edge + top edge of dst
+    - `top-center`: x-centered + top edge of dst
+    - `bottom-center`: x-centered + bottom edge of dst
+    - `center`: centered on both axes
+
+    Raises ValueError for zero-area `src` or unknown anchor.
+    """
+    sw = src[2] - src[0]
+    sh = src[3] - src[1]
+    if sw <= 0 or sh <= 0:
+        raise ValueError(f"src bbox has zero area: {src}")
+
+    dw = dst[2] - dst[0]
+    dh = dst[3] - dst[1]
+    if dw <= 0 or dh <= 0:
+        return dst
+
+    scale = min(dw / sw, dh / sh)
+    new_w = sw * scale
+    new_h = sh * scale
+
+    cx = (dst[0] + dst[2]) / 2.0
+    cy = (dst[1] + dst[3]) / 2.0
+
+    if anchor == "top-left":
+        x0 = dst[0]
+        x1 = x0 + new_w
+        y1 = dst[3]
+        y0 = y1 - new_h
+    elif anchor == "top-center":
+        x0 = cx - new_w / 2.0
+        x1 = cx + new_w / 2.0
+        y1 = dst[3]
+        y0 = y1 - new_h
+    elif anchor == "bottom-center":
+        x0 = cx - new_w / 2.0
+        x1 = cx + new_w / 2.0
+        y0 = dst[1]
+        y1 = y0 + new_h
+    elif anchor == "center":
+        x0 = cx - new_w / 2.0
+        x1 = cx + new_w / 2.0
+        y0 = cy - new_h / 2.0
+        y1 = cy + new_h / 2.0
+    else:
+        raise ValueError(f"unknown anchor: {anchor!r}")
+
+    return (x0, y0, x1, y1)

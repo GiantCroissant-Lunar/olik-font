@@ -15,11 +15,13 @@ def test_ming_root_left_right_resolves_child_transforms():
     resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
 
     left, right = resolved.children
-    # left should occupy upper-left quadrant of glyph space
-    assert apply_affine_to_point(left.transform, (0, 0)) == (0.0, 0.0)
-    # right should start after the split + gap
-    rx0, _ = apply_affine_to_point(right.transform, (0, 0))
-    assert rx0 > 400  # split at 40% = 409.6 + gap -> ~420
+    # Plan 10.1 fits the square canonical into each tall slot with a
+    # top-left anchor instead of stretching it full height.
+    assert apply_affine_to_point(left.transform, (0.0, 1024.0)) == (0.0, 1024.0)
+    assert apply_affine_to_point(left.transform, (1024.0, 0.0)) == (400.0, 624.0)
+    # right should still start after the split + gap, but as a fitted
+    # square flush to the slot's top-left corner.
+    assert apply_affine_to_point(right.transform, (0.0, 1024.0)) == (420.0, 1024.0)
 
 
 def test_qing_recursive_resolves_depth_2_children():
