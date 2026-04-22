@@ -1,0 +1,313 @@
+name: plan-11-virtual-coordinates-only
+description: >-
+  Execute Plan 11 (virtual coordinates only). Deletes the preset
+  vocabulary (left_right / top_bottom / enclose / repeat_triangle) and
+  associated slot-weight constants from code and data. Replaces preset-
+  driven compose with measured affine transforms derived from MMH
+  source-stroke bboxes. Per glyph-scene-graph spec decision D4: the
+  data model carries transform + anchor_bindings, never preset enums.
+  Workflow ends with tag plan-11-virtual-coordinates-only; visual
+  verification with Gemma 4 happens outside the workflow.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  - id: warm_mmh_cache
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      cd project/py
+      .venv/bin/python -c "
+      from pathlib import Path
+      from olik_font.sources.makemeahanzi import fetch_mmh
+      fetch_mmh(Path('data/mmh'))
+      "
+
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+
+  - id: implement
+    depends_on: [warm_mmh_cache, prebuild_ts]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 11 (virtual coordinates only)
+        task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-22-11-virtual-coordinates-only.md`.
+        Spec:       `vault/specs/2026-04-22-virtual-coordinates-only-design.md`.
+        Skill that governs this change:
+                    `.agent/skills/05-engine/glyph-geometry/SKILL.md` —
+                    read it on first iteration. The rule in that skill is
+                    binding; if any instruction below appears to conflict
+                    with it, the skill wins.
+
+        The plan has 8 tasks. Each task ends with a commit whose message
+        is spelled out. Task 8 ends with tag `plan-11-virtual-coordinates-only`.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Read `.agent/skills/05-engine/glyph-geometry/SKILL.md` on the
+           first iteration so you internalise the rule: placement is a
+           measured transform in 1024² virtual space, NEVER a preset
+           bucket (left_right / top_bottom / enclose / repeat_triangle)
+           with a global slot weight. Forbidden patterns include:
+             - `preset: <name>` as primary data on any dataclass or YAML.
+             - global slot-weight constants (`_LEFT_RIGHT_WEIGHT_L`,
+               `_TOP_BOTTOM_WEIGHT_TOP`, `_ENCLOSE_PADDING`, …).
+             - computing a per-char weight at compose time to feed a
+               preset adapter. Measurement happens at plan-load /
+               extraction time, stored per instance, read by compose.
+             - adding a categorical flag (e.g. `is_radical: bool`) to
+               patch preset behaviour. The categorical model is the bug.
+        3. Run `git log --oneline -30` to see what is committed. Match
+           commit messages against the plan's Task N commit messages.
+        4. Determine the next task:
+           - Nothing committed for Plan 11 yet → start at Task 1.
+           - Task K is the last committed task → start Task K+1.
+           - Task 8 committed AND the tag
+             `plan-11-virtual-coordinates-only` is applied → output
+             `COMPLETE` on its own line.
+        5. Implement the task exactly as written. TDD where the plan
+           dictates a failing test first.
+        6. Run the verification command for that task (pytest subset,
+           ruff, etc. — use what the task specifies or sensible defaults).
+        7. Run the commit command as shown in the plan. Commit messages
+           in the plan are normative.
+        8. Output exactly one of these on the last line of your response:
+           - `NEXT` (continue the loop)
+           - `COMPLETE` (plan done, tag applied)
+           - `BLOCKED: <one-line reason>` (stop; do not invent a fix)
+
+        ## Constraints
+
+        - Work only in the current worktree.
+        - Never amend or rebase. Fresh commits only.
+        - NEVER reintroduce the preset vocabulary while implementing a
+          task. If a file needs a placement field, use `transform` or
+          `source_stroke_indices`. If you feel tempted to write
+          `preset = "left_right"` or similar, STOP — you're drifting. Re-
+          read the skill.
+        - NEVER run `olik extract auto` against the host SurrealDB on
+          port 6480 during this workflow. The unit tests added by the
+          plan do not need a running DB.
+        - If `ruff format` rewrites a file after a commit attempt, re-
+          stage and retry with the same commit message (Plans 09.2 and
+          10 both hit this pattern).
+        - If Task 7 (`olik build 明 清 國 森`) fails because the CLI
+          subcommand name differs, use whatever subcommand the current
+          CLI exposes that renders seed glyph records from the
+          extraction plan. Confirm by reading
+          `project/py/src/olik_font/cli.py`.
+        - If MMH stroke counts for 森 differ from the plan's expected
+          12 strokes (3 × 木 of 4 strokes each), match the true stroke
+          count from `data/mmh/graphics.txt` and partition accordingly.
+
+        Output format: last line is EXACTLY `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`. No trailing text.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 18
+      idle_timeout: 1500000
+
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -20
+
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -25
+
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -20
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -15
+
+  - id: check_no_preset
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Preset-vocabulary residual scan"
+      echo ""
+      echo "### Python source"
+      matches=$(grep -RIn --include='*.py' -E 'preset[:"]|left_right|top_bottom|repeat_triangle|slot_bbox|_LEFT_RIGHT_WEIGHT|_TOP_BOTTOM_WEIGHT|_ENCLOSE_PADDING' project/py/src project/py/tests project/py/data 2>/dev/null || true)
+      if [ -n "$matches" ]; then
+        echo "FOUND preset residuals:"
+        echo "$matches"
+        echo ""
+        echo "VERDICT: REJECTED (preset vocabulary still present)"
+        exit 1
+      fi
+      echo "(none in py source)"
+      echo ""
+      echo "### Extraction plan YAML"
+      ymatches=$(grep -n -E '^[[:space:]]*preset:' project/py/data/extraction_plan.yaml 2>/dev/null || true)
+      if [ -n "$ymatches" ]; then
+        echo "FOUND preset keys in YAML:"
+        echo "$ymatches"
+        echo ""
+        echo "VERDICT: REJECTED (preset keys still in extraction_plan.yaml)"
+        exit 1
+      fi
+      echo "(extraction_plan.yaml clean)"
+      echo ""
+      echo "### Seed glyph records"
+      jmatches=$(grep -l 'preset:' project/schema/examples/glyph-record-*.json 2>/dev/null || true)
+      if [ -n "$jmatches" ]; then
+        echo "FOUND preset strings in records:"
+        echo "$jmatches"
+        echo ""
+        echo "VERDICT: REJECTED (preset strings in regenerated records)"
+        exit 1
+      fi
+      echo "(all 4 seed records clean)"
+      echo ""
+      echo "VERDICT: clean"
+
+  - id: approve
+    depends_on: [check_no_preset]
+    bash: |
+      set -e
+      echo "## Plan 11 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-11-virtual-coordinates-only"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -6
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -8
+      echo ""
+
+      py_ok=0; ts_ok=0; tc_ok=0; bd_ok=0; tag_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if echo "$run_build.output" | grep -qiE 'error|failed'; then
+        bd_ok=0
+      else
+        bd_ok=1
+      fi
+      if git tag -l "plan-11-virtual-coordinates-only" | grep -q plan-11; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && [ $bd_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok build=$bd_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      ## SAFETY: body must go to a temp file
+
+      Follow this exact pattern. Do NOT use inline `--body` with a
+      heredoc; do NOT use command substitution inside the body argument.
+      Markdown code blocks in the PR body contain backticks; inline
+      heredocs have caused prior workflows to shell-interpolate them and
+      run destructive commands against the host SurrealDB. Always:
+
+      1. Write the body text to `/tmp/pr-body-plan-11.md` using a plain
+         file write (the editor tool, or a single-line python one-liner
+         with the full body as a string literal — NOT a bash heredoc).
+      2. Call `gh pr create --title "..." --body-file /tmp/pr-body-plan-11.md`.
+      3. Delete the temp file after the PR URL is captured.
+
+      ## Title
+
+      `Plan 11: Virtual coordinates only — remove preset vocabulary from code and data`
+
+      ## Body content (write verbatim)
+
+      - One-line summary: deletes the preset vocabulary (left_right,
+        top_bottom, enclose, repeat_triangle) and global slot-weight
+        constants from the python source, tests, and `extraction_plan.yaml`.
+        Replaces preset-driven compose with measured affine transforms
+        derived from MMH source-stroke bboxes (per glyph scene graph
+        spec D4). Regenerates the 4 seed glyph records with measured
+        transforms.
+      - Commit list: output of `git log --oneline main..HEAD`.
+      - Python + TS test counts (tail of run_py / run_ts).
+      - Residual scan: output of `check_no_preset`.
+      - Tag: `plan-11-virtual-coordinates-only`.
+      - **Visual verification (post-merge, reviewer action):** operator
+        starts the inspector (`pnpm --filter @olik/inspector dev`) and
+        sends screenshots of the Decomposition Explorer + Placement
+        Debugger for 明 / 清 / 國 / 森 to Gemma 4 for approval. The
+        Placement Debugger should no longer show stretched full-height
+        columns for 日 etc.
+      - Links:
+        - Spec: `vault/specs/2026-04-22-virtual-coordinates-only-design.md`
+        - Plan: `vault/plans/2026-04-22-11-virtual-coordinates-only.md`
+        - Skill: `.agent/skills/05-engine/glyph-geometry/SKILL.md`
+        - Predecessors: Plan 10 (#11). Supersedes the (reverted) Plan 10.1
+          and the rejected Plan 10.2 framing.
+
+      ## Output
+
+      After `gh pr create` succeeds, output the final PR URL on the last
+      line of your response.
+    idle_timeout: 300000

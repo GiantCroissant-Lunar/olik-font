@@ -9,6 +9,12 @@ Numbered categories create an implicit dependency hierarchy — lower numbers ar
 | `vault-obsidian` | Manage the Obsidian vault at `vault/`: frontmatter conventions, wiki-links, MOCs, intake workflow for external material, Excalidraw diagrams. All notes-as-knowledge-graph discipline lives here. | `@notebooklm-cli`, `@ref-projects`, `@youtube-gemma` |
 | `archon-workflows` | Deterministic, worktree-isolated AI coding workflows (plan → implement → validate → review → PR). Codex SDK only on this project — no Claude Code SDK. Non-Codex assistants run via `bash:` nodes. | `@coding-providers`, `@vault-obsidian` |
 
+## 05-engine — Domain engineering discipline
+
+| Skill | Description | Related Skills |
+|---|---|---|
+| `glyph-geometry` | **Invoke whenever anything touches component placement** (decomposition schemas, compose, extraction plans, slot logic, variant matching, renderer math). Enforces the virtual-coordinate rule from the glyph scene graph spec (D4): a component instance carries a measured affine transform in 1024² virtual space. Presets (left_right / top_bottom / enclose / repeat_triangle) are never primary data; global slot-weight constants are forbidden. | `@vault-obsidian`, `@archon-workflows` |
+
 ## 04-tooling — Automation & Reference
 
 | Skill | Description | Related Skills |
@@ -74,7 +80,7 @@ related_skills:                     # @skill-name cross-references
 - `governance` — meta-skills that shape how other skills and agents operate (vault organization, workflow orchestration).
 - `tooling` — automation, external-service wrappers, provider routing, reference-material management.
 
-Additional layers (`engine`, `presentation`, `world`, `gameplay`, …) are reserved for future categories if this project grows into them. See the sibling `legend-dad` project for precedent.
+Additional layers (`presentation`, `world`, `gameplay`, …) are reserved for future categories if this project grows into them. See the sibling `legend-dad` project for precedent. The `engine` layer is already active (see `05-engine/glyph-geometry`).
 
 ## Project-level conventions
 
