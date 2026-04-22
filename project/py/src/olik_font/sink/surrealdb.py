@@ -148,16 +148,31 @@ def upsert_variant_of_edge(
     duplicate insert is an error, so we use BEGIN...IF NOT EXISTS
     semantics via SELECT-first.
     """
-    existing = db.query(
+    payload = db.query(
         "SELECT id FROM variant_of "
         "WHERE in = type::record('prototype', $v) "
         "  AND out = type::record('prototype', $c) LIMIT 1;",
         {"v": variant_id, "c": canonical_id},
-    )[0]["result"]
+    )
+    # surrealdb-python 1.x returns [{"result": [...]}]; 2.x returns [...]
+    # directly. Normalize both shapes.
+    if isinstance(payload, list):
+        if payload and isinstance(payload[0], dict) and "result" in payload[0]:
+            existing = payload[0]["result"]
+        else:
+            existing = payload
+    elif isinstance(payload, dict):
+        existing = payload.get("result", [])
+    else:
+        existing = []
     if existing:
         return
+    # RELATE does not accept type::record() in newer SurrealDB versions;
+    # use angle-bracket identifier escape to tolerate colons and
+    # non-ASCII characters (variant ids include both, e.g.
+    # prototype:⟨proto:u6728_in_林⟩).
     db.query(
-        "RELATE type::record('prototype', $v)->variant_of"
-        "->type::record('prototype', $c) CONTENT { reason: $r };",
-        {"v": variant_id, "c": canonical_id, "r": reason},
+        f"RELATE prototype:⟨{variant_id}⟩->variant_of->prototype:⟨{canonical_id}⟩ "
+        "CONTENT { reason: $r };",
+        {"r": reason},
     )
