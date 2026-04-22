@@ -44,6 +44,8 @@ class BatchReport:
     selected: int = 0
     selected_chars: list[str] = field(default_factory=list)
     counts: Counter[Status] = field(default_factory=Counter)
+    variants_minted: int = 0
+    canonical_probe_rejections: int = 0
 
     def add(self, status: Status) -> None:
         self.counts[status] += 1
@@ -120,12 +122,16 @@ def _finalize_extraction_run(db, run_id: str, report: BatchReport) -> None:
         "UPDATE type::record('extraction_run', $id) MERGE {"
         "  finished_at: time::now(),"
         "  counts: $counts,"
-        "  chars_processed: $chars"
+        "  chars_processed: $chars,"
+        "  variants_minted: $variants,"
+        "  canonical_probe_rejections: $rejections"
         "};",
         {
             "id": run_id,
             "counts": {status.value: report.counts[status] for status in Status},
             "chars": report.selected_chars,
+            "variants": report.variants_minted,
+            "rejections": report.canonical_probe_rejections,
         },
     )
 
@@ -158,6 +164,29 @@ def _make_probe(
         if match.k_gt_m or match.below_floor:
             return 0.0
         return match.mean_iou
+
+    return probe
+
+
+def _counting_probe(
+    base_probe: Callable[[str, str, str, int, int], float],
+    proto_index: ProtoIndex,
+    gate: float,
+    report: BatchReport,
+) -> Callable[[str, str, str, int, int], float]:
+    """Wrap a probe so run-level provenance captures canonical fallbacks."""
+
+    def probe(
+        component_char: str,
+        context_char: str,
+        preset: str,
+        n_components: int,
+        slot_idx: int,
+    ) -> float:
+        score = base_probe(component_char, context_char, preset, n_components, slot_idx)
+        if proto_index.canonical_for(component_char) is not None and score < gate:
+            report.canonical_probe_rejections += 1
+        return score
 
     return probe
 
@@ -206,7 +235,7 @@ def run_batch(
         run_id = _create_extraction_run(db, seed, iou_gate)
 
     index = _proto_index_from_db(db)
-    probe = _make_probe(mmh, index)
+    probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
 
     for ch in buckets:
         entry = cjk.get(ch)
@@ -270,6 +299,8 @@ def run_batch(
             report.add(Status.FAILED_EXTRACTION)
             continue
 
+        report.variants_minted += len(result.variant_edges)
+
         synthetic = ExtractionPlan(
             schema_version="0.1",
             prototypes=tuple(index.prototypes) + tuple(result.new_prototypes),
@@ -325,7 +356,7 @@ def run_batch(
             upsert_glyph(db, db_record)
 
         index = ProtoIndex(prototypes=[*index.prototypes, *result.new_prototypes])
-        probe = _make_probe(mmh, index)
+        probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
 
     if not dry_run and run_id is not None:
         _finalize_extraction_run(db, run_id, report)
