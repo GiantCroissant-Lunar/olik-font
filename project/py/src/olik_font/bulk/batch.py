@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import platform
+import sys
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -27,14 +28,14 @@ from olik_font.sink.surrealdb import (
     upsert_variant_of_edge,
 )
 from olik_font.sources.makemeahanzi import (
-    fetch_mmh,
-    load_mmh_dictionary,
-    load_mmh_graphics,
+    MmhChar,
 )
+from olik_font.sources.unified import load_unified_lookup
 from olik_font.types import BBox, PrototypeLibrary
 
 _PY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
+_DEFAULT_ANIMCJK_DIR = _PY_ROOT / "data" / "animcjk"
 _DEFAULT_CJK = _PY_ROOT / "data" / "cjk-decomp.json"
 _DEFAULT_RULES = _PY_ROOT / "src" / "olik_font" / "rules" / "rules.yaml"
 _GLYPH_BBOX = (0.0, 0.0, 1024.0, 1024.0)
@@ -171,7 +172,7 @@ def _finalize_extraction_run(db, run_id: str, report: BatchReport) -> None:
 
 
 def _make_probe(
-    mmh: dict[str, dict[str, Any]],
+    mmh: dict[str, MmhChar | dict[str, Any]],
     proto_index: ProtoIndex,
 ) -> Callable[[str, str, BBox], float]:
     """Build a probe closure backed by the Hungarian matcher.
@@ -244,14 +245,21 @@ def run_batch(
     dry_run: bool = False,
     *,
     mmh_dir: Path = _DEFAULT_MMH_DIR,
+    animcjk_dir: Path = _DEFAULT_ANIMCJK_DIR,
     cjk_path: Path = _DEFAULT_CJK,
     rules_path: Path = _DEFAULT_RULES,
 ) -> BatchReport:
     del rules_path
 
-    graphics_path, dictionary_path = fetch_mmh(mmh_dir)
-    mmh = load_mmh_graphics(graphics_path)
-    mmh_dict = load_mmh_dictionary(dictionary_path)
+    lookup = load_unified_lookup(
+        mmh_dir,
+        animcjk_dir,
+        on_miss=lambda kind, char: print(
+            f"source miss: {kind} {char} (checked mmh, animcjk)",
+            file=sys.stderr,
+        ),
+    )
+    mmh = lookup.merged_graphics()
     cjk = _load_cjk_entries(cjk_path)
 
     pool = load_moe_4808()
@@ -292,14 +300,15 @@ def run_batch(
         planner_mmh: dict[str, dict[str, Any]] = {}
         needed = [ch, *entry.get("components", [])]
         for key in needed:
-            if isinstance(key, str) and key in mmh:
+            loaded = lookup.char_graphics_lookup(key) if isinstance(key, str) else None
+            if isinstance(key, str) and loaded is not None:
                 planner_mmh[key] = {
-                    "character": mmh[key].character,
-                    "strokes": mmh[key].strokes,
-                    "medians": mmh[key].medians,
+                    "character": loaded.character,
+                    "strokes": loaded.strokes,
+                    "medians": loaded.medians,
                 }
 
-        host_dict = mmh_dict.get(ch)
+        host_dict = lookup.char_dictionary_lookup(ch)
         host_matches = host_dict.matches if host_dict is not None else None
 
         result = plan_char(
