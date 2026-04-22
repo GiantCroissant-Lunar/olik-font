@@ -1,0 +1,15 @@
+{"character":"敎","set":["t31"],"definition":"teach","radical":"攵 (攴)","decomposition":"⿰𡥉攵","acjk":"敎⿰𡥉7攵.4"}
+{"character":"証","set":["t33","taiwan4808"],"definition":"prove, confirm, verify; proof","radical":"言","decomposition":"⿰言正","acjk":"証⿰言.7正5"}
+{"character":"々","set":["tu"],"definition":"kanji repetition mark","radical":"⺈ (刀)","decomposition":"⿱⺈丶","acjk":"々⿱⺈.2丶1"}
+{"character":"〇","set":["tu"],"definition":"zero","radical":"〇 (囗)","decomposition":"","acjk":"〇.1"}
+{"character":"箇","set":["tu"],"definition":"numerary adjunct, piece; single","radical":"𥫗 (竹)","decomposition":"⿱𥫗固","acjk":"箇⿱𥫗.6固8"}
+{"character":"齣","set":["taiwan4808","tu"],"definition":"act; stanza; time, occasion","radical":"齒","decomposition":"⿰齒句","acjk":"齣⿰齒.15句5"}
+{"character":"説","set":["tu"],"definition":"speak","radical":"言","decomposition":"⿰言兑","acjk":"説⿰言.7兑7"}
+{"character":"榦","set":["tu"],"definition":"tree trunk; support, prop","radical":"木","decomposition":"⿰龺⿱𠆢木","acjk":"榦⿰龺8⿱𠆢2木.4"}
+{"character":"嵗","set":["tu"],"definition":"year; age; harvest","radical":"山","decomposition":"⿱山⿵戌𣥂","acjk":"嵗⿱山.3⿵戌:3𣥂3戌:3"}
+{"character":"𡻕","set":["tu"],"definition":"year of age","radical":"山","decomposition":"⿱山⿵戌𡭕","acjk":"𡻕⿱山.3⿵戌:3𡭕4戌:3"}
+{"character":"眞","set":["tu"],"definition":"real, actual, true, genuine","radical":"目","decomposition":"⿳匕⿺𠃊目八","acjk":"眞⿳匕2⿺目.5𠃊1八2"}
+{"character":"麪","set":["tu"],"definition":"flour, noodles, dough","radical":"麥","decomposition":"⿰麥丏","acjk":"麪⿰麥.11丏4"}
+{"character":"喫","set":["tu"],"definition":"eat; drink; suffer, endure, bear","radical":"口","decomposition":"⿰口契","acjk":"喫⿰口.3契9"}
+{"character":"舘","set":["tu"],"definition":"a mansion; a building","radical":"舌","decomposition":"⿰舍官","acjk":"舘⿰舍⿱𠆢2⿱一.1古.5官8"}
+{"character":"鈡","set":["tu"],"definition":"bell","radical":"金","decomposition":"⿰金中","acjk":"鈡⿰金.8中4"}
