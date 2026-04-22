@@ -20,7 +20,7 @@ def build_instance_tree(char: str, plan: ExtractionPlan) -> InstancePlacement:
     """Walk a glyph's plan; emit an InstancePlacement tree with identity transforms."""
     gp = plan.glyphs[char]
     state = {_INSTANCE_COUNTER: 0}
-    return _build_glyph(char, gp, state)
+    return _build_glyph(char, gp, plan.by_prototype_id, state)
 
 
 def _fresh_id(name: str, state: dict) -> str:
@@ -28,8 +28,16 @@ def _fresh_id(name: str, state: dict) -> str:
     return f"inst:{name}_{state[_INSTANCE_COUNTER]}"
 
 
-def _build_glyph(char: str, gp: GlyphPlan, state: dict) -> InstancePlacement:
-    children = tuple(_build_node(c, depth=1, state=state) for c in gp.children)
+def _build_glyph(
+    char: str,
+    gp: GlyphPlan,
+    by_prototype_id,
+    state: dict,
+) -> InstancePlacement:
+    children = tuple(
+        _build_node(c, root_char=char, by_prototype_id=by_prototype_id, depth=1, state=state)
+        for c in gp.children
+    )
     return InstancePlacement(
         instance_id=f"inst:{char}_root",
         prototype_ref=f"proto:__glyph_{char}",
@@ -42,15 +50,39 @@ def _build_glyph(char: str, gp: GlyphPlan, state: dict) -> InstancePlacement:
     )
 
 
-def _build_node(node: GlyphNodePlan, depth: int, state: dict) -> InstancePlacement:
+def _build_node(
+    node: GlyphNodePlan,
+    *,
+    root_char: str,
+    by_prototype_id,
+    depth: int,
+    state: dict,
+) -> InstancePlacement:
     children: tuple[InstancePlacement, ...] = ()
     if node.mode == "refine":
-        children = tuple(_build_node(c, depth=depth + 1, state=state) for c in node.children)
-    input_adapter = "refine" if node.children else "leaf"
+        children = tuple(
+            _build_node(
+                c,
+                root_char=root_char,
+                by_prototype_id=by_prototype_id,
+                depth=depth + 1,
+                state=state,
+            )
+            for c in node.children
+        )
+
+    source_stroke_indices = node.source_stroke_indices
+    if source_stroke_indices is None:
+        prototype = by_prototype_id.get(node.prototype_ref)
+        if prototype is not None and prototype.from_char == root_char:
+            source_stroke_indices = prototype.stroke_indices
+
+    input_adapter = "refine" if node.children else ("measured" if source_stroke_indices else "leaf")
     return InstancePlacement(
         instance_id=_fresh_id(node.prototype_ref.replace("proto:", ""), state),
         prototype_ref=node.prototype_ref,
-        transform=Affine.identity(),
+        transform=None,
+        source_stroke_indices=source_stroke_indices,
         mode=node.mode,
         depth=depth,
         children=children,

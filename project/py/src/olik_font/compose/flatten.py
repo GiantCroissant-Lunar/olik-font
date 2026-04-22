@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from olik_font.compose.z_layers import z_for_stroke
 from olik_font.geom import apply_affine_to_median, apply_affine_to_path, bbox_of_paths
-from olik_font.types import Affine, BBox, InstancePlacement, Point, PrototypeLibrary
+from olik_font.types import BBox, InstancePlacement, Point, PrototypeLibrary
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,33 +33,31 @@ def flatten_strokes(
 ) -> tuple[StrokeInstance, ...]:
     out: list[StrokeInstance] = []
     counter = {"n": 0}
-    _visit(root, Affine.identity(), library, out, counter)
+    _visit(root, library, out, counter)
     return tuple(out)
 
 
 def _visit(
     node: InstancePlacement,
-    outer: Affine,
     library: PrototypeLibrary,
     out: list[StrokeInstance],
     counter: dict[str, int],
 ) -> None:
-    from olik_font.geom import affine_compose
-
-    cumulative = affine_compose(outer, node.transform)
-
     if node.children:
         for child in node.children:
-            _visit(child, cumulative, library, out, counter)
+            _visit(child, library, out, counter)
         return
 
     if not library.contains(node.prototype_ref):
         return
 
+    if node.transform is None:
+        raise ValueError(f"instance {node.instance_id} has no resolved transform")
+
     proto = library[node.prototype_ref]
     for stroke in proto.strokes:
-        new_path = apply_affine_to_path(cumulative, stroke.path)
-        new_median = apply_affine_to_median(cumulative, stroke.median)
+        new_path = apply_affine_to_path(node.transform, stroke.path)
+        new_median = apply_affine_to_median(node.transform, stroke.median)
         new_bbox = bbox_of_paths([new_path])
         z = z_for_stroke(stroke.role, stroke.order)
         counter["n"] += 1
