@@ -2,7 +2,7 @@ from pathlib import Path
 
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.prototypes.extraction_plan import load_extraction_plan
-from olik_font.types import Affine, InstancePlacement
+from olik_font.types import InstancePlacement
 
 PLAN = Path(__file__).resolve().parents[1] / "data" / "extraction_plan.yaml"
 
@@ -15,8 +15,10 @@ def test_ming_builds_flat_two_leaves():
     assert len(root.children) == 2
     assert root.children[0].prototype_ref == "proto:sun"
     assert root.children[1].prototype_ref == "proto:moon"
-    # transforms are identities until compose resolves placement
-    assert root.children[0].transform == Affine.identity()
+    # compose resolves placement; build step only carries source geometry inputs
+    assert root.children[0].transform is None
+    assert root.children[0].source_stroke_indices == (0, 1, 2, 3)
+    assert root.children[0].input_adapter == "measured"
 
 
 def test_qing_refines_to_depth_2():

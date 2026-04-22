@@ -83,7 +83,8 @@ class PrototypeLibrary:
 class InstancePlacement:
     instance_id: str
     prototype_ref: str
-    transform: Affine
+    transform: Affine | None
+    source_stroke_indices: tuple[int, ...] | None = None
     anchor_bindings: tuple[AnchorBinding, ...] = ()
     mode: Mode = "keep"
     depth: int = 0

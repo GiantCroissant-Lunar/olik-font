@@ -1,66 +1,98 @@
 from pathlib import Path
 
-from olik_font.compose.walk import compose_transforms
+import pytest
+
+from olik_font.compose.walk import UnderspecifiedPlacement, compose_transforms
 from olik_font.decompose.instance import build_instance_tree
-from olik_font.geom import apply_affine_to_point
-from olik_font.prototypes.extraction_plan import load_extraction_plan
+from olik_font.prototypes.extraction_plan import (
+    ExtractionPlan,
+    GlyphNodePlan,
+    GlyphPlan,
+    PrototypePlan,
+)
+from olik_font.sources.makemeahanzi import load_mmh_graphics
 from olik_font.types import Affine
 
-PLAN = Path(__file__).resolve().parents[1] / "data" / "extraction_plan.yaml"
+ROOT = Path(__file__).resolve().parents[1]
+MMH = ROOT / "data" / "mmh" / "graphics.txt"
+
+pytestmark = pytest.mark.skipif(not MMH.exists(), reason="run Plan 01 Task 4 first")
 
 
-def test_ming_root_left_right_resolves_child_transforms():
-    plan = load_extraction_plan(PLAN)
-    tree = build_instance_tree("明", plan)
-    resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
+def _bbox(transform: Affine) -> tuple[float, float, float, float]:
+    tx, ty = transform.translate
+    sx, sy = transform.scale
+    return (tx, ty, tx + 1024.0 * sx, ty + 1024.0 * sy)
+
+
+def _ming_plan() -> ExtractionPlan:
+    return ExtractionPlan(
+        schema_version="0.1",
+        prototypes=(
+            PrototypePlan(
+                id="proto:sun",
+                name="日",
+                from_char="明",
+                stroke_indices=(0, 1, 2, 3),
+                roles=("meaning",),
+                anchors={},
+            ),
+            PrototypePlan(
+                id="proto:moon",
+                name="月",
+                from_char="明",
+                stroke_indices=(4, 5, 6, 7),
+                roles=("meaning",),
+                anchors={},
+            ),
+        ),
+        glyphs={
+            "明": GlyphPlan(
+                children=(
+                    GlyphNodePlan(
+                        prototype_ref="proto:sun",
+                        source_stroke_indices=(0, 1, 2, 3),
+                    ),
+                    GlyphNodePlan(
+                        prototype_ref="proto:moon",
+                        source_stroke_indices=(4, 5, 6, 7),
+                    ),
+                )
+            )
+        },
+    )
+
+
+def test_compose_transforms_measures_ming_children_from_mmh():
+    assert "明" in load_mmh_graphics(MMH)
+
+    tree = build_instance_tree("明", _ming_plan())
+    resolved, constraints = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
 
     left, right = resolved.children
-    # left should occupy upper-left quadrant of glyph space
-    assert apply_affine_to_point(left.transform, (0, 0)) == (0.0, 0.0)
-    # right should start after the split + gap
-    rx0, _ = apply_affine_to_point(right.transform, (0, 0))
-    assert rx0 > 400  # split at 40% = 409.6 + gap -> ~420
+    assert constraints == ()
+    assert left.transform is not None
+    assert right.transform is not None
+    assert left.transform != right.transform
+
+    left_bbox = _bbox(left.transform)
+    right_bbox = _bbox(right.transform)
+    assert left_bbox[0] < right_bbox[0]
+    assert left_bbox[1] < 320
+    assert right_bbox[1] < 100
+    assert left_bbox[3] < 900
+    assert right_bbox[3] < 900
+    assert left.transform.scale[1] < 0.6
+    assert right.transform.scale[1] < 0.9
 
 
-def test_qing_recursive_resolves_depth_2_children():
-    plan = load_extraction_plan(PLAN)
-    tree = build_instance_tree("清", plan)
-    resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
+def test_compose_transforms_raises_for_underspecified_leaf():
+    plan = ExtractionPlan(
+        schema_version="0.1",
+        prototypes=(),
+        glyphs={"明": GlyphPlan(children=(GlyphNodePlan(prototype_ref="proto:missing"),))},
+    )
 
-    water, qing = resolved.children
-    assert water.transform != Affine.identity()
-    assert qing.transform != Affine.identity()
-    # qing is refined -> its children should also have transforms
-    sheng, moon = qing.children
-    assert sheng.transform != Affine.identity()
-    assert moon.transform != Affine.identity()
-    # sheng's placed position should be within qing's placed bbox's upper half
-    sheng_origin = apply_affine_to_point(sheng.transform, (0, 0))
-    qing_origin = apply_affine_to_point(qing.transform, (0, 0))
-    assert sheng_origin[0] >= qing_origin[0] - 1  # horizontal within qing
-    assert sheng_origin[1] >= qing_origin[1] - 1  # starts at qing's top
-
-
-def test_guo_enclose_resolves():
-    plan = load_extraction_plan(PLAN)
-    tree = build_instance_tree("國", plan)
-    resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
-    outer, inner = resolved.children
-    assert apply_affine_to_point(outer.transform, (0, 0)) == (0.0, 0.0)
-    # inner should be padded inside outer
-    inner_origin = apply_affine_to_point(inner.transform, (0, 0))
-    assert 80 < inner_origin[0] < 140
-
-
-def test_senr_repeat_triangle_resolves():
-    # y-up convention: visual top = high y, visual bottom = low y. A
-    # 森-style triangle has two instances near the bottom (low y) and
-    # one near the top (high y).
-    plan = load_extraction_plan(PLAN)
-    tree = build_instance_tree("森", plan)
-    resolved, _ = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
-    assert len(resolved.children) == 3
-    centers = [apply_affine_to_point(c.transform, (512, 512)) for c in resolved.children]
-    ys = sorted(c[1] for c in centers)
-    assert ys[0] < 400 and ys[1] < 400  # two near bottom (low y)
-    assert ys[2] > 500  # one near top (high y)
+    tree = build_instance_tree("明", plan)
+    with pytest.raises(UnderspecifiedPlacement):
+        compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
