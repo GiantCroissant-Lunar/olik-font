@@ -1,0 +1,140 @@
+name: plan-13-v2-full-4808-coverage
+description: >-
+  Deliver v2: every Taiwan-4808 char verified or recorded, every
+  verified char stylable via the Plan 12 ComfyUI bridge. Seven tasks
+  (A..G): recursive partition, animCJK source, component carving,
+  per-prototype variant caps, cjk-decomp overrides, scale styling,
+  full 4808 run + verdict. Requires Plan 12 merged (v1-seed-plus-
+  styling tag present) and ComfyUI reachable on 127.0.0.1:8188.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then python3 -m venv .venv; fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  - id: require_plan_12
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! git tag -l v1-seed-plus-styling | grep -q v1; then
+        echo "FATAL: v1-seed-plus-styling tag missing — run Plan 12 first"
+        exit 1
+      fi
+
+  - id: verify_comfyui
+    depends_on: [require_plan_12]
+    bash: |
+      set -e
+      if ! curl -fs http://127.0.0.1:8188/system_stats >/dev/null 2>&1; then
+        echo "FATAL: ComfyUI not reachable"
+        exit 1
+      fi
+
+  - id: verify_surreal
+    depends_on: [require_plan_12]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: surreal CLI missing"
+        exit 1
+      fi
+      surreal --version
+
+  - id: implement
+    depends_on: [verify_comfyui, verify_surreal]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 13 (v2 full 4808 coverage)
+        task-by-task.
+
+        Plan file: `vault/plans/2026-04-22-13-v2-full-4808-coverage.md`.
+        Roadmap:    `vault/plans/2026-04-22-roadmap.md`.
+        Skill:      `.agent/skills/05-engine/glyph-geometry/SKILL.md`.
+        Read the skill on iteration 1. It is binding.
+
+        Your single-iteration job:
+        1. Read plan.
+        2. `git log --oneline -30` and match to Task A..G commit
+           messages. Determine next task. If Task G is done and tag
+           `v2-full-coverage` applied, output `COMPLETE`.
+        3. Implement the task exactly. TDD where tests are specified.
+        4. Run the task's verification.
+        5. Commit exactly as the plan specifies.
+        6. Output `NEXT` / `COMPLETE` / `BLOCKED: <reason>`.
+
+        Constraints:
+        - Never reintroduce preset vocabulary or categorical flags.
+          When a failure suggests patching the placement side, prefer
+          EXTENDING data (animCJK, carving, overrides) OR replacing
+          a wrong cjk-decomp entry via an override file. Never patch
+          compose.
+        - Task G's `olik extract auto` runs against the host
+          SurrealDB at 127.0.0.1:6480 — that IS the point. Don't
+          guard against it the way earlier plans did.
+        - Ruff/biome may rewrite files after commit; re-stage and
+          retry the same message.
+        - If ComfyUI is slow or unavailable, Task G's styling sweep
+          may produce fewer than the target count; proceed anyway
+          and note the constraint in the v2-unresolved file.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 40
+      idle_timeout: 2400000
+
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -25
+
+  - id: db_report
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py
+      .venv/bin/olik extract report 2>&1 | tail -20
+
+  - id: approve
+    depends_on: [run_py, db_report]
+    bash: |
+      set -e
+      py_ok=1
+      echo "$run_py.output" | grep -qE '[0-9]+ passed' || py_ok=0
+      echo "$run_py.output" | grep -qE '[1-9][0-9]* failed' && py_ok=0
+      tag_ok=0
+      git tag -l v2-full-coverage | grep -q v2 && tag_ok=1
+      verified_count=$(echo "$db_report.output" | grep -E '^\s*verified\s+[0-9]+' | awk '{print $2}')
+      coverage_ok=0
+      if [ -n "$verified_count" ] && [ "$verified_count" -ge 4700 ]; then
+        coverage_ok=1
+      fi
+      if [ $py_ok -eq 1 ] && [ $tag_ok -eq 1 ] && [ $coverage_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED verified=$verified_count"
+      else
+        echo "VERDICT: REJECTED py=$py_ok tag=$tag_ok coverage=$coverage_ok verified=$verified_count"
+        exit 1
+      fi
+
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push current branch to origin and open PR against main.
+
+      Write PR body to `/tmp/pr-body-plan-13.md` (plain file write).
+      `gh pr create --title "..." --body-file /tmp/pr-body-plan-13.md`.
+
+      Title: `Plan 13: v2 — all 4808 Taiwan chars verified + batch styled`
+
+      Body: one-line summary, extract report tail, commit list, pytest
+      tail, kimi verdict aggregate, tag name, link to spec + plan +
+      roadmap + v2-unresolved.md.
+
+      Output the PR URL on the last line.
+    idle_timeout: 300000

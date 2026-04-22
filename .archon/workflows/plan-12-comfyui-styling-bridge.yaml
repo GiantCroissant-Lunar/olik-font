@@ -1,0 +1,128 @@
+name: plan-12-comfyui-styling-bridge
+description: >-
+  Complete v1 of olik-font by shipping the ComfyUI styling bridge the
+  scene-graph spec has always assumed. Adds a REST client, base-image
+  renderer, three workflow templates, a batch orchestrator with
+  `olik style` CLI, and a kimi-driven verdict sweep. Acceptance: 4
+  seed chars × 3 styles × 2 seeds = 24 styled PNGs with ≥ 95% kimi
+  pass rate. ComfyUI must be running on 127.0.0.1:8188 before this
+  workflow starts.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then python3 -m venv .venv; fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  - id: verify_comfyui
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! curl -fs http://127.0.0.1:8188/system_stats >/dev/null 2>&1; then
+        echo "FATAL: ComfyUI not reachable at 127.0.0.1:8188"
+        exit 1
+      fi
+      echo "ComfyUI reachable"
+
+  - id: implement
+    depends_on: [verify_comfyui]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 12 (ComfyUI styling bridge)
+        task-by-task.
+
+        Plan file: `vault/plans/2026-04-22-12-comfyui-styling-bridge.md`.
+        Spec:       `vault/specs/2026-04-22-comfyui-styling-bridge-design.md`.
+        Governing skill (read first iteration):
+          `.agent/skills/05-engine/glyph-geometry/SKILL.md` — placement
+          is a measured affine transform; styling never reintroduces
+          preset vocabulary or categorical layout nodes.
+
+        Your single-iteration job:
+        1. Read the plan.
+        2. Read the skill on iteration 1.
+        3. `git log --oneline -20` — match commit messages to plan task
+           commit messages. Determine next unfinished task. If Task 6
+           is done and tag `v1-seed-plus-styling` is applied, output
+           `COMPLETE` and stop.
+        4. Implement the task exactly. TDD where tests are added.
+        5. Run the task's verification command.
+        6. Commit exactly as the plan specifies.
+        7. Output `NEXT`, `COMPLETE`, or `BLOCKED: <reason>` on the
+           last line.
+
+        Constraints:
+        - Never reintroduce preset vocabulary (left_right / top_bottom /
+          enclose / repeat_triangle / slot_bbox / _LEFT_RIGHT_WEIGHT_L
+          / …). The ComfyUI workflow JSONs use ControlNet / KSampler /
+          LoadImage / SaveImage — not CJK layout templates.
+        - If a ComfyUI model checkpoint isn't available locally, note
+          it in the workflow README and ship the workflow anyway; the
+          verdict task will skip those.
+        - Never run `olik extract auto` against the host DB.
+        - If `ruff format` rewrites after a commit attempt, re-stage
+          and retry with the same commit message.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 12
+      idle_timeout: 1500000
+
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -20
+
+  - id: verdict
+    depends_on: [run_py]
+    bash: |
+      set -e
+      if [ ! -x project/py/.venv/bin/olik ]; then
+        echo "olik CLI not installed"; exit 1
+      fi
+      cd project/py
+      # Task 5's verdict script does the real work.
+      if [ -x scripts/verdict_styling.py ] || [ -f scripts/verdict_styling.py ]; then
+        python3 scripts/verdict_styling.py 2>&1 | tail -40
+      else
+        echo "verdict_styling.py not found — skipping"
+      fi
+
+  - id: approve
+    depends_on: [verdict]
+    bash: |
+      set -e
+      py_ok=1
+      echo "$run_py.output" | grep -qE '[0-9]+ passed' || py_ok=0
+      echo "$run_py.output" | grep -qE '[1-9][0-9]* failed' && py_ok=0
+      tag_ok=0
+      git tag -l v1-seed-plus-styling | grep -q v1 && tag_ok=1
+      if [ $py_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED py=$py_ok tag=$tag_ok"
+        exit 1
+      fi
+
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push current branch to origin and open PR against main.
+
+      Write PR body to `/tmp/pr-body-plan-12.md` (plain file write, NOT
+      heredoc) then `gh pr create --title "..." --body-file /tmp/pr-body-plan-12.md`.
+
+      Title: `Plan 12: ComfyUI styling bridge — v1 completion (seeds + styles)`
+
+      Body: one-line summary, commit list from git log main..HEAD,
+      pytest tail, kimi verdict aggregate, tag name, link to spec + plan
+      + roadmap.
+
+      Output the PR URL on the last line.
+    idle_timeout: 300000
