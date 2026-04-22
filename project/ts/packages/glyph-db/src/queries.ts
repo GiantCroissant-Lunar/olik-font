@@ -13,7 +13,7 @@ import type {
 
 type GlyphSortField = NonNullable<ListOpts["sort"]>;
 
-function buildListQuery(opts: ListOpts | undefined) {
+export function buildListQuery(opts: ListOpts | undefined) {
   const clauses: string[] = [];
   const bind: Record<string, unknown> = {};
   const f = opts?.filter ?? {};
@@ -29,6 +29,15 @@ function buildListQuery(opts: ListOpts | undefined) {
   if (f.iouBelow !== undefined) {
     clauses.push("iou_mean < $iou");
     bind.iou = f.iouBelow;
+  }
+  if (f.iouRange !== undefined) {
+    clauses.push("iou_mean >= $iou_lo AND iou_mean <= $iou_hi");
+    bind.iou_lo = f.iouRange[0];
+    bind.iou_hi = f.iouRange[1];
+  }
+  if (f.status !== undefined) {
+    clauses.push("status IN $status");
+    bind.status = Array.isArray(f.status) ? f.status : [f.status];
   }
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 

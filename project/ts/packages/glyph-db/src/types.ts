@@ -1,5 +1,18 @@
 import type { GlyphRecord, Prototype } from "@olik/glyph-schema";
 
+export type Status =
+  | "verified"
+  | "needs_review"
+  | "unsupported_op"
+  | "failed_extraction";
+
+export const STATUS_VALUES: readonly Status[] = [
+  "verified",
+  "needs_review",
+  "unsupported_op",
+  "failed_extraction",
+] as const;
+
 export interface GlyphSummary {
   char: string;
   stroke_count: number;
@@ -26,6 +39,8 @@ export type ListFilter = {
   radical?: string;
   strokeCountRange?: [number, number];
   iouBelow?: number;
+  iouRange?: [number, number];
+  status?: Status | Status[];
 };
 
 export interface ListOpts {
