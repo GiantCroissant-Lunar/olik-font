@@ -9,6 +9,7 @@ import { createDataProvider } from "./data-provider.js";
 import { noopAuthProvider } from "./auth-provider.js";
 import { GlyphDetail } from "./resources/glyph/detail.js";
 import { GlyphList } from "./resources/glyph/list.js";
+import { StyleVariantList } from "./resources/style_variant/list.js";
 
 export function App() {
   const [db, setDb] = useState<OlikDb | null>(null);
@@ -62,6 +63,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/glyph" replace />} />
           <Route path="/glyph" element={<GlyphList />} />
           <Route path="/glyph/:id" element={<GlyphDetail />} />
+          <Route path="/style_variant" element={<StyleVariantList />} />
         </Routes>
       </Refine>
     </BrowserRouter>

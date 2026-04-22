@@ -24,6 +24,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/stroke_instance" }
     },
+    "mmh_strokes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "constraints": {
       "type": "array",
       "items": { "$ref": "#/$defs/constraint" }
