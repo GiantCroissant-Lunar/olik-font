@@ -69,12 +69,12 @@ function mockDb() {
 }
 
 describe("GlyphList", () => {
-  it("defaults the status filter to needs_review on first render", async () => {
+  it("defaults the status filter to verified + needs_review on first render", async () => {
     const db = mockDb();
     renderWithProviders(db);
     await screen.findByText("林");
     const lastCallArgs = (db.listGlyphs as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(lastCallArgs.filter.status).toEqual(["needs_review"]);
+    expect(lastCallArgs.filter.status).toEqual(["verified", "needs_review"]);
   });
 
   it("renders one row per glyph with char + iou_mean visible", async () => {

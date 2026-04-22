@@ -31,7 +31,7 @@ export function GlyphDetail() {
   const isLoading = oneQuery.isLoading;
   const { query: listQuery } = useList({
     resource: "glyph",
-    filters: [{ field: "status", operator: "in", value: ["needs_review"] }],
+    filters: [{ field: "status", operator: "in", value: ["verified", "needs_review"] }],
     sorters: [{ field: "iou_mean", order: "desc" }],
     pagination: { pageSize: 500 },
   });
