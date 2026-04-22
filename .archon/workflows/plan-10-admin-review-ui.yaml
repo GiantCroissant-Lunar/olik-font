@@ -1,0 +1,370 @@
+name: plan-10-admin-review-ui
+description: >-
+  Execute Plan 10 (admin review UI). Bumps the TS workspace from React
+  18 to React 19 (prereq for Mantine 9), extends @olik/glyph-db with
+  status / iouRange filters plus an updateGlyphStatus write method,
+  embeds mmh_strokes on glyph rows at emit time so the browser renders
+  the MMH reference without fetching the source JSONL, and scaffolds a
+  new project/ts/apps/admin Refine + Mantine app with a virtualized
+  review queue + split-panel detail view + keyboard-driven
+  approve/reject flow. All DB interactions use the ephemeral
+  surreal_ephemeral fixture or the admin app's dev server — the host's
+  persistent dev DB is never touched by the loop.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  # --------------------------------------------------------------------------
+  # 1. Python venv install. Plan 10 adds no new Python deps; the sink
+  #    change in Task 4 is a single field addition. Reinstall editable
+  #    anyway so later loop iterations see a consistent venv.
+  # --------------------------------------------------------------------------
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  # --------------------------------------------------------------------------
+  # 2. Verify the `surreal` CLI is on PATH. Same check as prior plans.
+  # --------------------------------------------------------------------------
+  - id: verify_surreal
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: surreal CLI not on PATH."
+        echo "Install with: brew install surrealdb/tap/surreal"
+        exit 1
+      fi
+      surreal --version
+      echo "surreal CLI ready."
+
+  # --------------------------------------------------------------------------
+  # 3. TS workspace install. Task 1 of the plan bumps React 18 -> 19;
+  #    after that commit lands, the loop's next iteration will reinstall
+  #    and pick up the new deps naturally. This node is the baseline
+  #    install before the loop starts.
+  # --------------------------------------------------------------------------
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  # --------------------------------------------------------------------------
+  # 4. Prebuild workspace packages so later typecheck / test nodes
+  #    resolve existing packages. Skips the new admin app (created by
+  #    the loop in Task 5); listed packages are the stable ones that
+  #    Plan 10 doesn't touch the runtime of.
+  # --------------------------------------------------------------------------
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+      for pkg in glyph-schema glyph-loader glyph-viz glyph-db; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING $pkg dist"; exit 1)
+      done
+      echo "All 4 workspace packages built."
+
+  # --------------------------------------------------------------------------
+  # 5. Implementation loop. Plan 10 has 10 tasks (React 19 upgrade,
+  #    glyph-db filter extensions, glyph-db updateGlyphStatus, Python
+  #    sink mmh_strokes embedding, admin scaffold, data provider, glyph
+  #    list, SVG components, glyph detail, style_variant stub + tag).
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify_surreal, prebuild_ts]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 10 (admin review UI)
+        task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-22-10-admin-review-ui.md`.
+        Spec:       `vault/specs/2026-04-22-admin-review-ui-design.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit
+        whose message is spelled out in the plan.
+
+        Plans 01–09 + Plan 09.2 are merged on main. In particular:
+          - Plan 08 provides `@olik/glyph-db` (typed TS client over
+            SurrealDB) plus the `surreal_ephemeral` pytest fixture and
+            `olik db sync/reset/export` CLI verbs.
+          - Plan 09 populates the glyph table with status-tagged rows;
+            Plan 09.2 added `variant_of` edges, the probe + matcher
+            infrastructure, and a small below_floor fallback fix.
+          - The `surreal` CLI is on PATH (verified by verify_surreal).
+          - Tests spawn ephemeral SurrealDB servers; DO NOT touch the
+            host DB at `127.0.0.1:6480`.
+          - The TS workspace is currently on React 18.3.1; Task 1 of
+            this plan bumps it to 19.0.x.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 10, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 10 is the last committed task and the
+             `plan-10-admin-review-ui` tag is applied, output
+             **exactly** the single word `COMPLETE` on its own line
+             and exit.
+        4. Implement every step exactly as written in the plan.
+           Follow TDD where the task calls for a failing test:
+           write the test first, confirm it fails, implement, confirm
+           it passes.
+        5. Run the verification command shown in the task. All tests
+           (new + existing) MUST pass before commit.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 10's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - **Never run admin's `pnpm dev` against http://127.0.0.1:6480**
+          beyond the brief boot-smoke in Task 5 (which uses `timeout 12`).
+          The host DB has real data; the loop must not write to it.
+        - **Never run `olik extract auto` / `olik db sync` /
+          `olik extract retry` against the host DB** for the same
+          reason.
+        - If `@refinedev/mantine` has not published a Mantine 9-
+          compatible release at implementation time (check npm for the
+          current published major), pin `@mantine/*` to `^8.3.18`
+          in `project/ts/apps/admin/package.json` and keep the React 19
+          bump. Mantine 8's 8.3.x line supports React 19. Document this
+          fallback in the Task 5 commit message.
+        - If `@remotion/*` declines React 19 during Task 1 Step 3 (peer
+          dep error), revert only `apps/remotion-studio/package.json`'s
+          three React fields back to their 18.x values and document the
+          pin in the Task 1 commit message. Inspector + quickview stay
+          on React 19.
+        - The Task 5 boot-smoke uses `timeout 12 pnpm dev` so the
+          Vite server terminates automatically after ~12 seconds. Do
+          not leave the dev server running.
+        - **Task 10 Step 5 (manual reviewer browser smoke)** is NOT run
+          by the loop — it is a reviewer action after merge. When the
+          loop reaches Task 10, run Steps 1-4 (stub file, route, final
+          verification, tag+commit) and output `COMPLETE`.
+        - If `scipy`, `surrealdb`, or other library APIs surface
+          differences, adjust minimally and document the adjustment
+          in the plan's "Adjustments after execution" section with a
+          one-line note.
+        - If the ephemeral surreal fixture's port picker races in the
+          final py-suite run, retry the failing test once.
+
+        ## Applying the tag at end-of-loop
+
+        After Task 10 Step 4's commit, apply the tag as shown in the
+        plan:
+
+        ```
+        git tag plan-10-admin-review-ui
+        ```
+
+        Then output `COMPLETE` on its own line.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 14
+      idle_timeout: 1800000
+
+  # --------------------------------------------------------------------------
+  # 6. Python test suite. Expected 164 passed + 1 xfailed (baseline
+  #    162+1 plus Task 4's 2 new mmh_strokes tests).
+  # --------------------------------------------------------------------------
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 7. TS test suite. Admin has three test files; glyph-db has two
+  #    new ones; inspector/quickview regression-green under React 19.
+  # --------------------------------------------------------------------------
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -25
+
+  # --------------------------------------------------------------------------
+  # 8. Workspace typecheck + build.
+  # --------------------------------------------------------------------------
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -20
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -15
+
+  # --------------------------------------------------------------------------
+  # 9. Auto-approve on py + ts tests green + typecheck + tag applied.
+  # --------------------------------------------------------------------------
+  - id: approve
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Plan 10 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-10-admin-review-ui"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -5
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -10
+      echo ""
+
+      py_ok=0
+      ts_ok=0
+      tc_ok=0
+      tag_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if git tag -l "plan-10-admin-review-ui" | grep -q plan-10; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # 10. Open the PR.
+  #
+  #     SAFETY: body must go to a temp file, NOT inline. The Plan 09
+  #     workflow's inline `--body` with heredoc shell-interpolated
+  #     backticks from PR-body code blocks and executed
+  #     `task extract:batch-500` against the host DB. Plan 09.2's
+  #     workflow patched this to `--body-file`. Plan 10 uses the same
+  #     safe pattern.
+  # --------------------------------------------------------------------------
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request
+      against `main`. Use `gh pr create`.
+
+      ## SAFETY: body must go to a temp file, NOT inline
+
+      Follow this exact pattern. Do NOT use inline `--body` with a
+      heredoc; do NOT use command substitution inside the body
+      argument. Markdown code blocks in the PR body contain backticks,
+      and inline heredocs have caused prior workflows to shell-
+      interpolate them and execute destructive commands against the
+      host SurrealDB. Always:
+
+      1. Write the body text to `/tmp/pr-body-plan-10.md` using a
+         plain file write (the editor tool, or a single-line python
+         one-liner with the full body as a string literal — NOT a
+         bash heredoc).
+      2. Call `gh pr create --title "..." --body-file /tmp/pr-body-plan-10.md`.
+      3. Delete the temp file after the PR URL is captured.
+
+      ## Title
+
+      `Plan 10: Admin review UI — Refine + Mantine 9 reviewer queue over @olik/glyph-db`
+
+      ## Body content (write verbatim to the temp file)
+
+      Include the following sections. The body is a normal markdown
+      document; it WILL contain backticks and triple-backtick fences,
+      which is why it goes to a file, not an inline shell argument.
+
+      - One-line summary: new `project/ts/apps/admin` on Refine +
+        Mantine 9 + React 19, serving a keyboard-first reviewer
+        queue over SurrealDB. Workspace bumped React 18 → 19 as a
+        prereq. `@olik/glyph-db` gained `status`/`iouRange` filters
+        and `updateGlyphStatus` with client-side `VALID_TRANSITIONS`.
+        Python sink now embeds `mmh_strokes` on each glyph row for
+        the browser's reference render.
+      - Commit list: output of `git log --oneline main..HEAD`.
+      - Python + TS test counts (from the run_py and run_ts node
+        outputs — check `$run_py.output` / `$run_ts.output` tail).
+      - Tag: `plan-10-admin-review-ui`.
+      - Dev workflow note: admin lives at
+        `http://localhost:5174/` via `pnpm --filter @olik/admin dev`.
+        Reviewer needs SurrealDB on `127.0.0.1:6480` (task db:up).
+      - Fallback note IF Task 5 was committed against Mantine 8.x
+        rather than Mantine 9.x: flag this in a "Known deviations"
+        section, with the reason.
+      - Fallback note IF Task 1 pinned `remotion-studio` to React
+        18: flag it in the same section with the peer-dep error that
+        forced the pin.
+      - **Action required post-merge** (manual reviewer smoke — the
+        workflow did NOT run these):
+
+        ```
+        cd /Users/apprenticegc/Work/lunar-horse/plate-projects/olik-font
+        task db:up
+        project/py/.venv/bin/olik extract auto --count 20 --seed 7
+        cd project/ts && pnpm install
+        cd project/ts/apps/admin && pnpm dev
+        # Browser: http://localhost:5174/
+        # 1. Glyph list should render ~20 needs_review rows.
+        # 2. Click one → detail view with composed SVG + MMH reference.
+        # 3. Press Y → status=verified, auto-advance to next.
+        # 4. Press N with a review note → status=failed_extraction.
+        # 5. Reload → reviewed rows persist their new status.
+        ```
+
+      - Links:
+        - Spec: `vault/specs/2026-04-22-admin-review-ui-design.md`
+        - Plan: `vault/plans/2026-04-22-10-admin-review-ui.md`
+        - Predecessors: Plan 08 (#8), Plan 09 (#9), Plan 09.2 (#10).
+
+      ## Output
+
+      After `gh pr create` succeeds, output the final PR URL on the
+      last line of your response.
+    idle_timeout: 300000
