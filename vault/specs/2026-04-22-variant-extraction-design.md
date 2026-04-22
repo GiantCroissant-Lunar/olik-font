@@ -240,10 +240,23 @@ Evaluated in order; first match wins:
 | MMH missing context char | `PlanFailed` (existing) |
 | Canonical missing — mint via standalone MMH | PlanOk with new canonical (existing, Plan 09.1) |
 | K > M (canonical strokes > context strokes) | `PlanFailed` |
-| `min_iou < 0.30` (per-stroke floor) | `PlanFailed` |
 | variant cap already hit for this canonical | `PlanFailed` (existing, Plan 09) |
 | `mean_iou ≥ 0.90` (probe gate) | Reuse canonical |
+| `min_iou < 0.30` (per-stroke floor) | **Reuse canonical** (fall back to Plan 09.1 behavior) |
 | otherwise | Mint variant; write `variant_of` edge |
+
+**Revision note (2026-04-22, post-merge verification):** The original spec had
+`min_iou < 0.30 → PlanFailed`. Real-data verification surfaced that CJK
+components routinely cross slot boundaries (e.g. 木 in 李 spans y=[385..851]
+across the top_bottom y=542 split), so Hungarian often produces zero-IoU
+pairings even when canonical reuse would render correctly. Failing these
+cases moved ~27 chars per 100 from Plan 09.1's `needs_review` to
+`failed_extraction` — a regression in usable output. Changed the ladder so
+`below_floor` falls back to canonical reuse; the final compose-time IoU
+gate still decides verified vs needs_review. Variant minting is now gated
+on the matcher actually finding clean pairs (above floor). Plan 09.3 will
+replace bbox IoU with a shape/median-based matcher that handles boundary-
+crossing components correctly.
 
 ## 7. CLI
 

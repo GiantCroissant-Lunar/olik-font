@@ -168,12 +168,17 @@ def plan_char(
                         )
                     )
                 if match.below_floor:
-                    return PlanFailed(
-                        reason=(
-                            f"match floor: best pairing for {comp_name} in "
-                            f"{char} has min_iou={match.min_iou:.3f}"
-                        )
-                    )
+                    # Matcher can't isolate component strokes reliably —
+                    # common when real MMH components cross slot boundaries
+                    # (e.g. 木 in 李 spans y=[385..851], crossing the
+                    # top_bottom y=542 split). Variant extraction would mint
+                    # wrong indices, but canonical reuse is still renderable;
+                    # the final compose+IoU gate decides verified vs
+                    # needs_review, same as Plan 09.1. No variant, no edge.
+                    canonical_fallback = decision.canonical_for_edge
+                    assert canonical_fallback is not None
+                    child_nodes.append(GlyphNodePlan(prototype_ref=canonical_fallback, mode="keep"))
+                    continue
                 new_protos.append(variant)
                 if decision.canonical_for_edge is not None:
                     variant_edges.append((variant.id, decision.canonical_for_edge))

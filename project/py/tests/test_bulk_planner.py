@@ -170,9 +170,13 @@ def test_plan_char_mints_variant_when_canonical_below_gate() -> None:
     assert (variant_id("木", "林"), canonical_id("木")) in result.variant_edges
 
 
-def test_plan_char_fails_when_match_below_floor() -> None:
-    """Canonical exists but the context char's strokes don't overlap the
-    slot at all -> min_iou < 0.30 floor -> PlanFailed."""
+def test_plan_char_below_floor_falls_back_to_canonical_reuse() -> None:
+    """Canonical exists but the matcher's best pairing is below the
+    per_stroke_floor (common when real MMH components cross slot
+    boundaries). Rather than fail, the planner falls back to canonical
+    reuse — the glyph renders with canonical strokes and the final
+    compose-time IoU gate sorts verified vs needs_review, same as
+    Plan 09.1. No variant is minted, no variant_of edge written."""
     canonical_paths = [_rect_path(0, 0, 100, 100), _rect_path(100, 100, 200, 200)]
     context_paths = [_rect_path(900, 900, 1024, 1024), _rect_path(950, 950, 1000, 1000)]
     mmh = {
@@ -196,8 +200,15 @@ def test_plan_char_fails_when_match_below_floor() -> None:
         gate=0.90,
         cap=2,
     )
-    assert isinstance(result, PlanFailed)
-    assert "floor" in result.reason.lower() or "match" in result.reason.lower()
+    assert isinstance(result, PlanOk)
+    # No variant minted, no variant_of edge.
+    assert result.new_prototypes == []
+    assert result.variant_edges == []
+    # Both component slots resolve to the canonical's id.
+    assert [child.prototype_ref for child in result.glyph_plan.children] == [
+        canonical_id("木"),
+        canonical_id("木"),
+    ]
 
 
 def test_plan_char_fails_when_k_gt_m() -> None:
