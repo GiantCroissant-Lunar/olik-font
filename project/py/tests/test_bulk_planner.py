@@ -66,10 +66,18 @@ def test_plan_char_supported_op_returns_ok() -> None:
     assert by_name["月"].from_char == "月"
 
 
-def test_plan_char_unsupported_op_returns_sentinel() -> None:
+def test_plan_char_unsupported_when_cjk_empty() -> None:
+    """With measured placement there is no op whitelist. PlanUnsupported now
+    fires only when cjk-decomp itself offers nothing — no components."""
+    entry = {"operator": "wb", "components": []}
+    MINIMAL_MMH["彌"] = {
+        "character": "彌",
+        "strokes": [_rect_path(0, 0, 8, 8)] * 4,
+        "medians": [[]] * 4,
+    }
     result = plan_char(
         char="彌",
-        cjk_entry={"operator": "wb", "components": ["弓", "爾"]},
+        cjk_entry=entry,
         mmh=MINIMAL_MMH,
         matches=None,
         index=ProtoIndex(prototypes=[]),
@@ -79,6 +87,40 @@ def test_plan_char_unsupported_op_returns_sentinel() -> None:
     )
     assert isinstance(result, PlanUnsupported)
     assert result.missing_op == "wb"
+
+
+def test_plan_char_any_op_succeeds_with_partition() -> None:
+    """Op names outside the old whitelist (e.g. 'wb', 'stl') are fine as long as
+    the MMH partition matches the cjk component count."""
+    MINIMAL_MMH["弓"] = {
+        "character": "弓",
+        "strokes": [_rect_path(0, 0, 8, 8)] * 4,
+        "medians": [[]] * 4,
+    }
+    MINIMAL_MMH["爾"] = {
+        "character": "爾",
+        "strokes": [_rect_path(0, 0, 8, 8)] * 4,
+        "medians": [[]] * 4,
+    }
+    MINIMAL_MMH["彌"] = {
+        "character": "彌",
+        "strokes": [_d_stroke(i) for i in range(8)],
+        "medians": [[]] * 8,
+    }
+    result = plan_char(
+        char="彌",
+        cjk_entry={"operator": "wb", "components": ["弓", "爾"]},
+        mmh=MINIMAL_MMH,
+        matches=MATCHES_MING,
+        index=ProtoIndex(prototypes=[]),
+        probe_iou=lambda *_a, **_kw: 1.0,
+        gate=0.90,
+        cap=2,
+    )
+    assert isinstance(result, PlanOk)
+    left, right = result.glyph_plan.children
+    assert left.source_stroke_indices == (0, 1, 2, 3)
+    assert right.source_stroke_indices == (4, 5, 6, 7)
 
 
 def test_plan_char_missing_mmh_returns_failed() -> None:

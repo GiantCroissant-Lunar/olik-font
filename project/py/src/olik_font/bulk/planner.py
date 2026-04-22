@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 
 from olik_font.bulk import variant_match
 from olik_font.bulk.mmh_partition import top_level_partition
-from olik_font.bulk.ops import expected_component_count, is_supported_op
 from olik_font.bulk.reuse import ProtoIndex, decide_prototype
 from olik_font.geom import bbox_of_paths, union_bbox
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
@@ -121,20 +120,17 @@ def plan_char(
     char is returned as PlanFailed — caller can retry later when MMH
     coverage expands.
     """
-    op = cjk_entry.get("operator", "")
-    if not is_supported_op(op):
-        return PlanUnsupported(missing_op=op or "<empty>")
-
+    # Measured placement doesn't need an op whitelist: the MMH `matches`
+    # partition IS the placement authority. The operator name stays as
+    # metadata on the plan so downstream can surface structural intent,
+    # but it does not gate planning. PlanUnsupported is reserved for the
+    # narrow case where cjk-decomp itself has nothing to offer.
     if char not in mmh:
         return PlanFailed(reason=f"MMH missing {char}")
 
     components: list[str] = list(cjk_entry.get("components", []))
     if len(components) == 0:
-        return PlanFailed(reason="cjk-decomp has no components")
-
-    expected = expected_component_count(op)
-    if expected is not None and len(components) != expected:
-        return PlanFailed(reason=f"op {op} expects {expected} components, got {len(components)}")
+        return PlanUnsupported(missing_op=cjk_entry.get("operator", "") or "<empty>")
 
     partition = top_level_partition(matches)
     if partition is None or len(partition) != len(components):

@@ -46,6 +46,7 @@ export const GlyphRecord = z
     layout_tree: LayoutNode,
     component_instances: z.array(ComponentInstance),
     stroke_instances: z.array(StrokeInstance),
+    mmh_strokes: z.array(z.string()).optional(),
     constraints: z.array(Constraint),
     render_layers: z.array(RenderLayer),
     roles: z.record(
