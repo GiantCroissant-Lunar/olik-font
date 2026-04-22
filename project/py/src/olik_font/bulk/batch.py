@@ -304,13 +304,19 @@ def run_batch(
     if cap is None:
         cap = load_variant_caps().cap_for
 
+    seen_source_misses: set[tuple[str, str]] = set()
+
+    def log_source_miss(kind: str, char: str) -> None:
+        key = (kind, char)
+        if key in seen_source_misses:
+            return
+        seen_source_misses.add(key)
+        print(f"source miss: {kind} {char} (checked mmh, animcjk)", file=sys.stderr)
+
     lookup = load_unified_lookup(
         mmh_dir,
         animcjk_dir,
-        on_miss=lambda kind, char: print(
-            f"source miss: {kind} {char} (checked mmh, animcjk)",
-            file=sys.stderr,
-        ),
+        on_miss=log_source_miss,
     )
     mmh = {**load_carved_components(), **lookup.merged_graphics()}
     cjk = _load_cjk_entries(cjk_path)
