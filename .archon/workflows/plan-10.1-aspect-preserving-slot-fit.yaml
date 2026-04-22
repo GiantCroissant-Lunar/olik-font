@@ -1,0 +1,308 @@
+name: plan-10.1-aspect-preserving-slot-fit
+description: >-
+  Execute Plan 10.1 (aspect-preserving slot fit). Adds a new
+  olik_font.geom.fit_in_slot helper and wires all four preset adapters
+  (apply_left_right, apply_top_bottom, apply_enclose,
+  apply_repeat_triangle) to use it before bbox_to_bbox_affine. Result
+  is uniform-scale placement of the canonical inside each slot with
+  per-slot corner anchor (top-left for left_right, top/bottom-center
+  for top_bottom, center for enclose inner + repeat_triangle cells);
+  outer of enclose is unchanged. Existing preset tests are updated to
+  the new anchored-bbox expectations; a new test_anchor_fit.py covers
+  the helper. No TS or DB changes. Manual browser smoke (Task 7) is
+  a reviewer action after merge.
+provider: codex
+model: gpt-5.4
+
+nodes:
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  - id: verify_surreal
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      if ! command -v surreal >/dev/null 2>&1; then
+        echo "FATAL: surreal CLI not on PATH."
+        echo "Install with: brew install surrealdb/tap/surreal"
+        exit 1
+      fi
+      surreal --version
+      echo "surreal CLI ready."
+
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+      for pkg in glyph-schema glyph-loader glyph-viz glyph-db; do
+        test -f "packages/$pkg/dist/index.js" || (echo "MISSING $pkg dist"; exit 1)
+      done
+      echo "All 4 workspace packages built."
+
+  # --------------------------------------------------------------------------
+  # Implementation loop. Plan 10.1 is 6 tasks (fit_in_slot helper + 4
+  # preset updates + regression sweep/tag). Task 7 is a post-merge
+  # reviewer action — NOT run by the loop.
+  # --------------------------------------------------------------------------
+  - id: implement
+    depends_on: [verify_surreal, prebuild_ts]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 10.1 (aspect-preserving slot
+        fit) task-by-task.
+
+        ## Context
+        Plan file: `vault/plans/2026-04-22-10.1-aspect-preserving-slot-fit.md`.
+        Spec:       `vault/specs/2026-04-22-aspect-preserving-slot-fit-design.md`.
+        Tasks are `## Task N:` headers. Each task ends with a commit
+        whose message is spelled out in the plan.
+
+        Plans 01–09 + 09.2 + 10 are merged on main. In particular:
+          - Plan 10's admin review UI revealed that the preset
+            adapters non-uniformly stretch canonical components into
+            slots of differing aspect ratio (e.g. 口 in 囀's 400x1024
+            slot). Plan 10.1 fixes that.
+          - `olik_font.geom` already has `bbox_to_bbox_affine`,
+            `apply_affine_to_point`, and `bbox_of_paths`.
+          - `olik_font.constraints.presets` has four `apply_*` adapters
+            plus a `slot_bbox` helper and module-level slot-size
+            constants (Plan 09.1 refactor + Plan 10.1 doesn't touch
+            those).
+          - Existing preset tests (test_preset_left_right/top_bottom/
+            enclose) encode non-uniform bboxes — those expectations
+            are updated as part of each task.
+          - CANONICAL = (0.0, 0.0, 1024.0, 1024.0) is already exported
+            from presets; reused.
+
+        ## Your single-iteration job
+
+        1. Read the plan.
+        2. Run `git log --oneline -20` to see what's committed. Match
+           commit messages to the task-commit messages in the plan.
+        3. Determine the next task.
+           - If nothing committed yet for Plan 10.1, start at Task 1.
+           - If Task K is the last committed task, start Task K+1.
+           - If Task 6 is the last committed task and the
+             `plan-10.1-aspect-preserving-slot-fit` tag is applied,
+             output **exactly** the single word `COMPLETE` on its own
+             line and exit.
+        4. Implement every step exactly as written in the plan.
+           Follow TDD: failing test first → verify it fails →
+           implement → verify it passes.
+        5. Run the verification command shown in the task.
+        6. Run the commit command exactly as shown in the plan.
+        7. Output **exactly** one of these on the last line:
+           - `NEXT` — continue the loop
+           - `COMPLETE` — plan done (after Task 6's tag)
+           - `BLOCKED: <one-line reason>` — stop (do not invent a fix)
+
+        ## Constraints
+
+        - Work only inside the current worktree.
+        - Never skip the fail-first check for TDD tasks.
+        - Never amend or rebase. Fresh commits only.
+        - **Never run `olik extract auto` or touch the host DB** at
+          http://127.0.0.1:6480. Plan 10.1's unit tests do not need
+          a running SurrealDB — they operate purely on geom /
+          constraint preset logic.
+        - Task 7 (manual browser smoke) is a reviewer action AFTER
+          merge. When the loop reaches Task 6 and applies the tag,
+          output `COMPLETE`. Do not attempt Task 7.
+        - Existing `test_compose_walk.py::test_senr_repeat_triangle_resolves`
+          should pass unchanged because repeat_triangle cells are
+          square and the new fit_in_slot call is a no-op for that
+          case. If that test fails post-Task-5, investigate before
+          blocking — the plan spec §9 anticipates this is unchanged.
+        - If `ruff format` rewrites a file after a commit attempt,
+          re-stage and retry with the same commit message (Plans
+          09.2 and 10 both hit this pattern).
+
+        ## Applying the tag at end-of-loop
+
+        After Task 5's commit, Task 6 runs the regression sweep and
+        applies the tag:
+
+        ```
+        git tag plan-10.1-aspect-preserving-slot-fit
+        ```
+
+        Then output `COMPLETE` on its own line.
+
+        Output format: last line MUST be exactly `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 9
+      idle_timeout: 1200000
+
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -15
+
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -20
+
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -15
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -10
+
+  - id: approve
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Plan 10.1 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-10.1-aspect-preserving-slot-fit"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -5
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -8
+      echo ""
+
+      py_ok=0
+      ts_ok=0
+      tc_ok=0
+      tag_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if git tag -l "plan-10.1-aspect-preserving-slot-fit" | grep -q plan-10.1; then
+        tag_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && [ $tag_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok tag=$tag_ok)"
+        exit 1
+      fi
+
+  # --------------------------------------------------------------------------
+  # Open the PR via the safe --body-file pattern (same as Plans 09.2 + 10).
+  # --------------------------------------------------------------------------
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request
+      against `main`. Use `gh pr create`.
+
+      ## SAFETY: body must go to a temp file
+
+      Follow this exact pattern. Do NOT use inline `--body` with a
+      heredoc; do NOT use command substitution inside the body
+      argument. Markdown code blocks in the PR body contain backticks;
+      inline heredocs have caused prior workflows to shell-interpolate
+      them and run destructive commands against the host SurrealDB.
+      Always:
+
+      1. Write the body text to `/tmp/pr-body-plan-10.1.md` using a
+         plain file write (the editor tool, or a single-line python
+         one-liner with the full body as a string literal — NOT a
+         bash heredoc).
+      2. Call `gh pr create --title "..." --body-file /tmp/pr-body-plan-10.1.md`.
+      3. Delete the temp file after the PR URL is captured.
+
+      ## Title
+
+      `Plan 10.1: Aspect-preserving slot fit — fit_in_slot + per-slot anchors across 4 preset adapters`
+
+      ## Body content (write verbatim to the temp file)
+
+      - One-line summary: adds `olik_font.geom.fit_in_slot(src, dst,
+        anchor)` and wires all four preset adapters
+        (apply_left_right/top_bottom/enclose/repeat_triangle) to
+        delegate through it. Canonical components no longer
+        non-uniformly stretch into slots of differing aspect; each
+        sits uniformly scaled at the slot's natural corner
+        (top-left for left_right, top/bottom-center for top_bottom,
+        center for enclose inner and repeat_triangle cells; enclose
+        outer unchanged).
+      - Commit list: output of `git log --oneline main..HEAD`.
+      - Python + TS test counts (tail of run_py / run_ts).
+      - Tag: `plan-10.1-aspect-preserving-slot-fit`.
+      - **Manual browser smoke required post-merge** (reviewer
+        action — the workflow did NOT run this):
+
+        ```
+        cd /Users/apprenticegc/Work/lunar-horse/plate-projects/olik-font
+        task db:up
+        project/py/.venv/bin/olik extract auto --count 10 --seed 111
+        cd project/ts && pnpm install
+        cd project/ts/apps/admin && pnpm dev
+        # Browser: http://localhost:5174/ (or 5175)
+        # 1. Click a 口-radical char — expect small top-left square
+        #    rather than stretched full-height column.
+        # 2. Click a 氵-radical char — expect full-height left anchor
+        #    (aspect preserved because氵 is naturally tall).
+        # 3. Click an enclose char (if seed surfaces one) — inner
+        #    should render centered with preserved aspect.
+        ```
+
+      - Links:
+        - Spec: `vault/specs/2026-04-22-aspect-preserving-slot-fit-design.md`
+        - Plan: `vault/plans/2026-04-22-10.1-aspect-preserving-slot-fit.md`
+        - Predecessors: Plan 09 (#9), Plan 09.2 (#10), Plan 10 (#11).
+      - Known follow-up: Plan 10.2 will size slots per-char based on
+        MMH stroke distribution, closing the remaining "slot is still
+        too wide" side of the 囀-style layout problem.
+
+      ## Output
+
+      After `gh pr create` succeeds, output the final PR URL on the
+      last line of your response.
+    idle_timeout: 300000
