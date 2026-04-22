@@ -1,11 +1,8 @@
 """Prototype reuse decision + context-variant fallback.
 
-Plan 09.1: name_to_slug produces `u<hex>` slugs uniformly. The hand-tuned
-seed prototypes (proto:sun, proto:moon, ...) are intentionally NOT
-reused by the auto-planner — they were extracted from context chars
-rather than standalone MMH entries, which is the bug Plan 09.1 fixes.
-Auto-planned prototypes use `proto:u<hex>` IDs so the two systems stay
-disjoint in the DB.
+The decision layer takes a MEASURED slot bbox (computed by the planner
+from MMH's `matches` field), not a preset label. The probe closure
+signature is `(component_char, context_char, slot) -> float`.
 """
 
 from __future__ import annotations
@@ -17,6 +14,8 @@ from olik_font.bulk.reuse import (
     variant_id,
 )
 from olik_font.prototypes.extraction_plan import PrototypePlan
+
+_SLOT = (0.0, 0.0, 512.0, 1024.0)
 
 
 def _proto(id_: str, name: str, from_char: str, strokes: tuple[int, ...]) -> PrototypePlan:
@@ -31,9 +30,7 @@ def _proto(id_: str, name: str, from_char: str, strokes: tuple[int, ...]) -> Pro
 
 
 def test_canonical_id_uses_codepoint_slug() -> None:
-    # 木 = U+6728 → u6728
     assert canonical_id("木") == "proto:u6728"
-    # 日 = U+65E5 → u65e5 (no longer maps to the seed's proto:sun)
     assert canonical_id("日") == "proto:u65e5"
 
 
@@ -47,9 +44,7 @@ def test_reuse_when_canonical_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
@@ -65,9 +60,7 @@ def test_new_prototype_when_none_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
@@ -78,41 +71,28 @@ def test_new_prototype_when_none_exists() -> None:
 
 
 def test_hand_tuned_seed_prototypes_are_not_reused() -> None:
-    """Seed rows like proto:sun (minted from 明's strokes 0..3) must
-    NOT be picked up by the auto-planner — their from_char is wrong.
-    Auto-planner looks up `canonical_id('日')` = `proto:u65e5`, which
-    the seed row does not satisfy.
-    """
     seed = _proto("proto:sun", "日", "明", (0, 1, 2, 3))
     idx = ProtoIndex(prototypes=[seed])
     decision = decide_prototype(
         component_char="日",
         context_char="旭",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 1.0,
         gate=0.90,
         cap=2,
     )
-    # Must treat as new canonical (minted from 日's own MMH entry).
     assert decision.chosen_id == canonical_id("日")
     assert decision.is_new_canonical is True
 
 
 def test_variant_decision_fires_when_canonical_below_gate() -> None:
-    """The decision layer still proposes a variant when canonical IoU
-    fails. Plan 09.1's planner chooses NOT to mint it (returns
-    PlanFailed instead) — that choice is tested in test_bulk_planner."""
     cid = canonical_id("木")
     idx = ProtoIndex(prototypes=[_proto(cid, "木", "木", (0, 1, 2, 3))])
     decision = decide_prototype(
         component_char="木",
         context_char="林",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 0.7,
         gate=0.90,
@@ -135,9 +115,7 @@ def test_variant_reuse_when_context_match_exists() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="林",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 0.7,
         gate=0.90,
@@ -160,9 +138,7 @@ def test_variant_cap_exceeded_signals_review() -> None:
     decision = decide_prototype(
         component_char="木",
         context_char="橋",
-        preset="left_right",
-        n_components=2,
-        slot_idx=0,
+        slot=_SLOT,
         index=idx,
         probe_iou=lambda *_a, **_kw: 0.5,
         gate=0.90,
@@ -172,27 +148,23 @@ def test_variant_cap_exceeded_signals_review() -> None:
     assert decision.cap_exceeded is True
 
 
-def test_probe_iou_receives_five_args() -> None:
-    """Guards the callable contract: (component_char, context_char, preset,
-    n_components, slot_idx) -> float. If this breaks, batch.py's real probe
-    won't line up with the planner's call."""
+def test_probe_iou_receives_measured_slot() -> None:
+    """Probe signature: (component_char, context_char, slot) -> float."""
     cid = canonical_id("木")
     idx = ProtoIndex(prototypes=[_proto(cid, "木", "木", (0, 1, 2, 3))])
     received: dict[str, object] = {}
 
-    def spy_probe(comp: str, ctx: str, preset: str, n: int, slot: int) -> float:
-        received.update(comp=comp, ctx=ctx, preset=preset, n=n, slot=slot)
+    def spy_probe(comp: str, ctx: str, slot):
+        received.update(comp=comp, ctx=ctx, slot=slot)
         return 1.0
 
     decide_prototype(
         component_char="木",
         context_char="林",
-        preset="left_right",
-        n_components=2,
-        slot_idx=1,
+        slot=_SLOT,
         index=idx,
         probe_iou=spy_probe,
         gate=0.90,
         cap=2,
     )
-    assert received == {"comp": "木", "ctx": "林", "preset": "left_right", "n": 2, "slot": 1}
+    assert received == {"comp": "木", "ctx": "林", "slot": _SLOT}

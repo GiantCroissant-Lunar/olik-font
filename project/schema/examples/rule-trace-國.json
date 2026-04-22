@@ -19,17 +19,16 @@
           }
         }
       ],
-      "applied_at": "2026-04-21T10:30:19.153159+00:00"
+      "applied_at": "2026-04-22T09:35:58.970835+00:00"
     },
     {
       "decision_id": "d:國:composition",
-      "rule_id": "compose.preset_from_plan",
+      "rule_id": "compose.measured_transforms",
       "inputs": {
-        "has_preset_in_plan": true,
-        "preset": "enclose"
+        "compose_source": "measured_transforms"
       },
       "output": {
-        "adapter": "preset"
+        "adapter": "measured"
       },
       "alternatives": [
         {
@@ -39,7 +38,7 @@
           }
         }
       ],
-      "applied_at": "2026-04-21T10:30:19.153166+00:00"
+      "applied_at": "2026-04-22T09:35:58.970840+00:00"
     }
   ]
 }

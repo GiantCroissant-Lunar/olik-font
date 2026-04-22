@@ -1,28 +1,28 @@
-"""cjk-decomp operator → compose mode mapping."""
+"""cjk-decomp operator whitelist and arity hints."""
 
 from __future__ import annotations
 
-from olik_font.bulk.ops import SUPPORTED_MODES, resolve_mode
+from olik_font.bulk.ops import SUPPORTED_OPS, expected_component_count, is_supported_op
 
 
-def test_resolve_supported_ops() -> None:
-    assert resolve_mode("a") == "left_right"
-    assert resolve_mode("d") == "top_bottom"
-    assert resolve_mode("s") == "enclose"
-    assert resolve_mode("r3tr") == "repeat_triangle"
+def test_is_supported_op_accepts_whitelist() -> None:
+    for op in ("a", "d", "s", "r3tr"):
+        assert is_supported_op(op)
 
 
-def test_resolve_unsupported_returns_none() -> None:
-    assert resolve_mode("w") is None
-    assert resolve_mode("wb") is None
-    assert resolve_mode("nonsense") is None
+def test_is_supported_op_rejects_others() -> None:
+    for op in ("w", "wb", "nonsense", ""):
+        assert not is_supported_op(op)
 
 
-def test_supported_modes_covers_olik_presets() -> None:
-    # Sanity: the values of the LUT must all be real olik compose presets.
-    import typing
+def test_expected_component_count() -> None:
+    assert expected_component_count("a") == 2
+    assert expected_component_count("d") == 2
+    assert expected_component_count("s") == 2
+    assert expected_component_count("r3tr") == 3
+    assert expected_component_count("unknown") is None
 
-    from olik_font.prototypes.extraction_plan import Preset
 
-    valid = set(typing.get_args(Preset))
-    assert SUPPORTED_MODES.issubset(valid)
+def test_supported_ops_is_frozen_set() -> None:
+    assert isinstance(SUPPORTED_OPS, frozenset)
+    assert frozenset({"a", "d", "s", "r3tr"}) == SUPPORTED_OPS

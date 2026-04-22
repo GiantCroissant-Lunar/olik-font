@@ -1,7 +1,9 @@
-"""Resolved constraint primitives emitted by presets.
+"""Resolved constraint primitives.
 
 Shape: immutable dataclasses, serialized to JSON via `as_dict`. The JSON form
-matches the `constraints[]` shape in glyph-record.schema.json.
+matches the `constraints[]` shape in glyph-record.schema.json. Compose in pass
+1 does not emit any primitives (see olik_font.compose.walk); the shapes are
+retained for future constraint-solver work.
 """
 
 from __future__ import annotations

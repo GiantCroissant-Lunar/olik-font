@@ -16,7 +16,6 @@ from olik_font.bulk.planner import PlanFailed, PlanUnsupported, plan_char
 from olik_font.bulk.reuse import ProtoIndex
 from olik_font.bulk.status import Status
 from olik_font.compose.walk import compose_transforms
-from olik_font.constraints.presets import slot_bbox
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.emit.record import build_glyph_record
 from olik_font.prototypes.extract import extract_all_prototypes
@@ -27,8 +26,12 @@ from olik_font.sink.surrealdb import (
     upsert_prototype,
     upsert_variant_of_edge,
 )
-from olik_font.sources.makemeahanzi import fetch_mmh, load_mmh_graphics
-from olik_font.types import PrototypeLibrary
+from olik_font.sources.makemeahanzi import (
+    fetch_mmh,
+    load_mmh_dictionary,
+    load_mmh_graphics,
+)
+from olik_font.types import BBox, PrototypeLibrary
 
 _PY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
@@ -143,8 +146,12 @@ def _finalize_extraction_run(db, run_id: str, report: BatchReport) -> None:
 def _make_probe(
     mmh: dict[str, dict[str, Any]],
     proto_index: ProtoIndex,
-) -> Callable[[str, str, str, int, int], float]:
-    """Build a probe closure backed by the Hungarian matcher."""
+) -> Callable[[str, str, BBox], float]:
+    """Build a probe closure backed by the Hungarian matcher.
+
+    Caller passes a measured `slot` (union bbox of the host's partition
+    strokes). No preset vocabulary enters here.
+    """
 
     def _strokes(entry: Any) -> list[str]:
         if isinstance(entry, dict):
@@ -154,16 +161,13 @@ def _make_probe(
     def probe(
         component_char: str,
         context_char: str,
-        preset: str,
-        n_components: int,
-        slot_idx: int,
+        slot: BBox,
     ) -> float:
         canonical = proto_index.canonical_for(component_char)
         if canonical is None or component_char not in mmh or context_char not in mmh:
             return 0.0
         canonical_strokes = _strokes(mmh[component_char])
         context_strokes = _strokes(mmh[context_char])
-        slot = slot_bbox(preset, n_components, slot_idx)
         match = variant_match.match_in_slot(canonical_strokes, context_strokes, slot)
         if match.k_gt_m or match.below_floor:
             return 0.0
@@ -173,21 +177,19 @@ def _make_probe(
 
 
 def _counting_probe(
-    base_probe: Callable[[str, str, str, int, int], float],
+    base_probe: Callable[[str, str, BBox], float],
     proto_index: ProtoIndex,
     gate: float,
     report: BatchReport,
-) -> Callable[[str, str, str, int, int], float]:
+) -> Callable[[str, str, BBox], float]:
     """Wrap a probe so run-level provenance captures canonical fallbacks."""
 
     def probe(
         component_char: str,
         context_char: str,
-        preset: str,
-        n_components: int,
-        slot_idx: int,
+        slot: BBox,
     ) -> float:
-        score = base_probe(component_char, context_char, preset, n_components, slot_idx)
+        score = base_probe(component_char, context_char, slot)
         if proto_index.canonical_for(component_char) is not None and score < gate:
             report.canonical_probe_rejections += 1
         return score
@@ -220,8 +222,9 @@ def run_batch(
 ) -> BatchReport:
     del rules_path
 
-    graphics_path, _dictionary_path = fetch_mmh(mmh_dir)
+    graphics_path, dictionary_path = fetch_mmh(mmh_dir)
     mmh = load_mmh_graphics(graphics_path)
+    mmh_dict = load_mmh_dictionary(dictionary_path)
     cjk = _load_cjk_entries(cjk_path)
 
     pool = load_moe_4808()
@@ -269,10 +272,14 @@ def run_batch(
                     "medians": mmh[key].medians,
                 }
 
+        host_dict = mmh_dict.get(ch)
+        host_matches = host_dict.matches if host_dict is not None else None
+
         result = plan_char(
             char=ch,
             cjk_entry=entry,
             mmh=planner_mmh,
+            matches=host_matches,
             index=index,
             probe_iou=probe,
             gate=iou_gate,

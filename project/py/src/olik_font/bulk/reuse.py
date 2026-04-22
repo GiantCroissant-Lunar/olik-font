@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from olik_font.prototypes.extraction_plan import PrototypePlan
+from olik_font.types import BBox
 
 
 def name_to_slug(name: str) -> str:
@@ -74,20 +75,17 @@ class ReuseDecision:
 def decide_prototype(
     component_char: str,
     context_char: str,
-    preset: str,
-    n_components: int,
-    slot_idx: int,
+    slot: BBox,
     index: ProtoIndex,
-    probe_iou: Callable[[str, str, str, int, int], float],
+    probe_iou: Callable[[str, str, BBox], float],
     gate: float,
     cap: int,
 ) -> ReuseDecision:
     """Decide which prototype a component should resolve to.
 
-    `probe_iou(component_char, context_char, preset, n_components, slot_idx)`
-    returns the matched mean IoU of the canonical against the context char's
-    strokes in the preset's slot. Below `gate` triggers context-variant
-    fallback.
+    `probe_iou(component_char, context_char, slot)` returns the matched
+    mean IoU of the canonical against the context char's strokes inside
+    the measured slot. Below `gate` triggers context-variant fallback.
     """
     exact_variant = variant_id(component_char, context_char)
     for p in index.prototypes:
@@ -102,7 +100,7 @@ def decide_prototype(
             is_new_canonical=True,
         )
 
-    if probe_iou(component_char, context_char, preset, n_components, slot_idx) >= gate:
+    if probe_iou(component_char, context_char, slot) >= gate:
         return ReuseDecision(chosen_id=canonical.id, canonical_for_edge=None)
 
     existing_variants = index.variants_of(component_char)

@@ -12,12 +12,9 @@ decomposition:
     action: { mode: keep, depth: 0 }
 
 composition:
-  - id: compose.preset_from_plan
-    when: { has_preset_in_plan: true }
-    action: { adapter: preset }
-  - id: compose.direct_for_repeat_triangle
-    when: { preset: repeat_triangle }
-    action: { adapter: direct }
+  - id: compose.measured_transforms
+    when: { compose_source: measured_transforms }
+    action: { adapter: measured }
   - id: compose.default_identity
     when: {}
     action: { adapter: identity }

@@ -135,7 +135,7 @@ def _build_artifacts(
         )
         compose_trace = apply_first_match(
             bucket=rules.composition,
-            inputs={"has_preset_in_plan": True, "preset": plan.glyphs[ch].preset},
+            inputs={"compose_source": "measured_transforms"},
             decision_id=f"d:{ch}:composition",
         )
 

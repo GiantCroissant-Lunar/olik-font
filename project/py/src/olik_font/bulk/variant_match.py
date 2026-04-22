@@ -1,23 +1,20 @@
 """IoU-per-stroke Hungarian matching between a canonical component's
 standalone strokes and a context character's strokes.
 
-Used by Plan 09.2's bulk auto-planner:
+Used by the bulk auto-planner as an IoU probe that decides canonical-
+reuse vs. context-variant. Both sides are measured: the caller passes a
+measured `slot` bbox (typically the union bbox of the host's partition
+strokes from MMH's `matches` field), and this module transforms the
+canonical into that slot before computing bbox-IoU against the host's
+native-frame strokes.
 
-1. As the canonical probe — mean IoU of the optimal pairing determines
-   whether canonical reuse is viable or a context variant is needed.
-2. As the variant extractor — the context-side indices of the matched
-   pairs become the variant prototype's `stroke_indices` (pointing into
-   the context char's MMH entry).
-
-Matching space: canonical strokes are transformed by the bbox-to-bbox
-affine that maps canonical 0..1024 space to the preset slot inside
-the context char. Context strokes stay in their native frame. IoU is
-bbox-level (fast, consistent with existing `compose.iou.bbox_iou`);
-polygon-level IoU is Plan 09.3.
+Variant stroke_indices are NOT derived from this matcher anymore — the
+planner reads them directly from MMH's partition. Only the mean IoU
+score is consumed by callers.
 
 Algorithm: KxM cost matrix of `1 - bbox_iou`, solved with scipy's
-`linear_sum_assignment` (Jonker-Volgenant, O(n^3) in the worst case but
-trivially fast for <=30 strokes).
+`linear_sum_assignment` (Jonker-Volgenant, O(n^3) worst case but trivial
+for <=30 strokes).
 """
 
 from __future__ import annotations
@@ -73,8 +70,9 @@ def match_in_slot(
             MMH entry (one per stroke), in canonical 0..1024 y-up space.
         context_strokes: SVG path-d strings of the context character's
             MMH entry (one per stroke), in context 0..1024 y-up space.
-        slot: the bbox inside the context char's canvas where the canonical
-            is supposed to be placed (from `constraints.presets.slot_bbox`).
+        slot: measured union bbox of the host's partition strokes for
+            this component, typically computed by the planner from MMH's
+            `matches` field.
         per_stroke_floor: any matched pair with IoU < floor flips
             `below_floor` to True. Caller decides whether to treat that
             as a hard failure.

@@ -54,7 +54,9 @@ def test_ming_record_validates_and_has_8_strokes(lib_and_plan):
     jsonschema.Draft202012Validator(_record_schema()).validate(record)
     assert record["glyph_id"] == "明"
     assert len(record["stroke_instances"]) == 8
-    assert len(record["constraints"]) >= 3
+    # Pass-1 compose does not emit constraint primitives; placement is
+    # carried entirely by `transform` on each instance.
+    assert record["constraints"] == []
 
 
 def test_record_carries_iou_report(lib_and_plan):

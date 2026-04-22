@@ -19,25 +19,18 @@
           }
         }
       ],
-      "applied_at": "2026-04-21T10:30:19.368879+00:00"
+      "applied_at": "2026-04-22T09:35:59.196887+00:00"
     },
     {
       "decision_id": "d:森:composition",
-      "rule_id": "compose.preset_from_plan",
+      "rule_id": "compose.measured_transforms",
       "inputs": {
-        "has_preset_in_plan": true,
-        "preset": "repeat_triangle"
+        "compose_source": "measured_transforms"
       },
       "output": {
-        "adapter": "preset"
+        "adapter": "measured"
       },
       "alternatives": [
-        {
-          "rule_id": "compose.direct_for_repeat_triangle",
-          "would_output": {
-            "adapter": "direct"
-          }
-        },
         {
           "rule_id": "compose.default_identity",
           "would_output": {
@@ -45,7 +38,7 @@
           }
         }
       ],
-      "applied_at": "2026-04-21T10:30:19.368886+00:00"
+      "applied_at": "2026-04-22T09:35:59.196891+00:00"
     }
   ]
 }

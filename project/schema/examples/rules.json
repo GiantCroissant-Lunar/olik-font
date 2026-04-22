@@ -22,21 +22,12 @@
   ],
   "composition": [
     {
-      "id": "compose.preset_from_plan",
+      "id": "compose.measured_transforms",
       "when": {
-        "has_preset_in_plan": true
+        "compose_source": "measured_transforms"
       },
       "action": {
-        "adapter": "preset"
-      }
-    },
-    {
-      "id": "compose.direct_for_repeat_triangle",
-      "when": {
-        "preset": "repeat_triangle"
-      },
-      "action": {
-        "adapter": "direct"
+        "adapter": "measured"
       }
     },
     {
