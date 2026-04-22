@@ -12,7 +12,9 @@ Unresolved: 4176
 ## Notes
 
 - Clean host Task G run on 2026-04-23: verified 632 / 4808; needs_review 629; failed_extraction 3547.
-- ComfyUI styling sweep attempted against localhost ComfyUI but produced zero styled outputs before interruption; sweep remains partial due host-side throughput/failure.
+- Re-ran `olik style --all-verified --styles ink-brush --seeds 1 --out styled-output/v2-sweep/` on 2026-04-23 against the same host DB state (`632` verified chars).
+- The sweep staged `632` base renders under `styled-output/v2-sweep/.base-render/` but still produced `0` styled PNGs after multiple minutes on localhost ComfyUI; styling remains blocked by host-side throughput/completion.
+- `scripts/verdict_v2.py --out-dir styled-output/v2-sweep --report vault/references/v2-verdict.md` still fails immediately with `FileNotFoundError` because the sweep has no styled PNG outputs to sample.
 
 ## Per-char detail
 
