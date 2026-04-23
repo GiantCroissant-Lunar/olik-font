@@ -27,6 +27,8 @@ project/py/data/*
 # animCJK zh-Hant dataset snapshot used by Plan 13 Task B.
 !project/py/data/animcjk/
 !project/py/data/animcjk/**
+!project/py/data/glyph_decomp/
+!project/py/data/glyph_decomp/**
 !project/py/data/carved_components.json
 !project/py/data/variant_caps.yaml
 project/py/.pytest_cache/
