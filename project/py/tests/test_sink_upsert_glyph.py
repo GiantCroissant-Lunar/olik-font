@@ -19,7 +19,7 @@ SAMPLE_RECORD = {
     "radical": "日",
     "iou_mean": 1.0,
     "stroke_instances": [{"id": "s0"}, {"id": "s1"}],
-    "layout_tree": {"id": "明", "mode": "left_right", "children": []},
+    "layout_tree": {"id": "明", "mode": "keep", "children": []},
     "render_layers": [],
     "iou_report": {"mean": 1.0, "per_group": {}},
     "component_instances": [

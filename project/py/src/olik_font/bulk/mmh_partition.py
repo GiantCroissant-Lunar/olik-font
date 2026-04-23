@@ -17,10 +17,8 @@ a longer list::
 
 This module turns that raw structure into an explicit per-instance list
 of stroke indices that downstream compose can measure against MMH paths.
-It supersedes the preset / slot_bbox machinery for characters whose MMH
-entry carries `matches`. Characters without `matches` (older/rare glyphs)
-fall through and are handled by the Hungarian matcher path with a
-measured slot instead of a preset one.
+Characters without `matches` (older/rare glyphs) fall through and are
+handled by the Hungarian matcher path against a measured slot.
 """
 
 from __future__ import annotations

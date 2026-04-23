@@ -5,8 +5,8 @@ from __future__ import annotations
 from olik_font.bulk.mmh_partition import nested_partition, top_level_partition
 
 
-def test_top_level_simple_left_right() -> None:
-    # 明 ⿰日月 — strokes 0..3 belong to component 0, 4..7 to component 1.
+def test_top_level_simple_two_components() -> None:
+    # 明 — strokes 0..3 belong to component 0 (日), 4..7 to component 1 (月).
     matches = [[0], [0], [0], [0], [1], [1], [1], [1]]
     assert top_level_partition(matches) == [[0, 1, 2, 3], [4, 5, 6, 7]]
 

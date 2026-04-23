@@ -15,12 +15,9 @@ export const LAYER_COLOR: Record<string, string> = {
 };
 
 export const INPUT_ADAPTER_COLOR: Record<string, string> = {
-  direct: "#6366f1",
-  "preset:left_right": "#0ea5e9",
-  "preset:top_bottom": "#14b8a6",
-  "preset:enclose": "#d97706",
-  "direct:repeat_triangle": "#a855f7",
-  "anchor-binding": "#ec4899",
+  extraction_plan: "#6366f1",
+  refine: "#0ea5e9",
+  measured: "#14b8a6",
   leaf: "#64748b",
 };
 
