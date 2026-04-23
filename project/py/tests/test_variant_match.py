@@ -1,5 +1,5 @@
 """variant_match.match_in_slot — Hungarian bbox-IoU pairing of a canonical
-component's strokes (transformed into a context char's preset slot)
+component's strokes (transformed into a context char's measured slot)
 against the context char's own strokes."""
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_context_order_permutation_does_not_break_pairing() -> None:
 
 def test_slot_transform_repositions_canonical_into_slot_frame() -> None:
     """Canonical occupies the full canonical bbox (0..1024); slot is the
-    top half of a 1024x1024 glyph (top_bottom preset, y-up: HIGH y).
+    upper half of a 1024x1024 glyph (y-up: HIGH y).
     After transform, canonical's strokes live in y=[512..1024]; context
     strokes also in y=[512..1024] → match."""
     canonical = [_rect_path(0, 0, 1024, 1024)]

@@ -11,7 +11,7 @@ export function InputAdapterChip({
   adapter, x = 0, y = 0,
 }: InputAdapterChipProps): React.ReactElement {
   const color = INPUT_ADAPTER_COLOR[adapter] ?? "#64748b";
-  const text = adapter.replace("preset:", "").replace("direct:", "");
+  const text = adapter;
 
   return (
     <g className="olik-input-adapter-chip" transform={`translate(${x}, ${y})`}>

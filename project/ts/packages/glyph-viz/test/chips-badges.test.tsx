@@ -20,10 +20,9 @@ describe("IoUBadge", () => {
 });
 
 describe("InputAdapterChip", () => {
-  test("renders label sans the preset: prefix", () => {
-    const { container } = render(<svg><InputAdapterChip adapter="preset:left_right" /></svg>);
-    expect(container.textContent).toContain("left_right");
-    expect(container.textContent).not.toContain("preset:");
+  test("renders the adapter label verbatim", () => {
+    const { container } = render(<svg><InputAdapterChip adapter="refine" /></svg>);
+    expect(container.textContent).toContain("refine");
   });
 
   test("falls back to grey color for unknown adapter", () => {

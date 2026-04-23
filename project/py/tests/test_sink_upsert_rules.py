@@ -24,22 +24,22 @@ BASIC_GLYPH = {
 
 RULES = [
     {
-        "id": "rule:left_right_day",
+        "id": "rule:decomp_day",
         "pattern": "日+X",
         "bucket": "decomp",
-        "resolution": "left_right",
+        "resolution": "decompose",
     },
     {
-        "id": "rule:left_right_moon",
+        "id": "rule:decomp_moon",
         "pattern": "X+月",
         "bucket": "decomp",
-        "resolution": "left_right",
+        "resolution": "decompose",
     },
 ]
 
 TRACE = [
-    {"rule_id": "rule:left_right_day", "fired": True, "order": 0, "alternative": False},
-    {"rule_id": "rule:left_right_moon", "fired": False, "order": 1, "alternative": True},
+    {"rule_id": "rule:decomp_day", "fired": True, "order": 0, "alternative": False},
+    {"rule_id": "rule:decomp_moon", "fired": False, "order": 1, "alternative": True},
 ]
 
 

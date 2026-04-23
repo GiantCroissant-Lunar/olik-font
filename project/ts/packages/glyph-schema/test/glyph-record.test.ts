@@ -21,7 +21,7 @@ describe("GlyphRecord", () => {
     expect(() => GlyphRecord.parse(raw)).toThrow();
   });
 
-  test("discriminated union accepts a left_right-style constraint list", () => {
+  test("discriminated union accepts a constraint list", () => {
     const raw = JSON.parse(readFileSync(helloPath, "utf-8"));
     raw.constraints = [
       { kind: "align_y", targets: ["inst:a.center", "inst:b.center"] },
