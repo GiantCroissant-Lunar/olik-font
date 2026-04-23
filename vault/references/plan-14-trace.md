@@ -56,6 +56,7 @@ workflow.
 | 11 | pending | demo_char | 丁 | n/a | 2026-04-23T04:21:02Z |
 | 11 | pending | status_flip | failed→verified | n/a | 2026-04-23T04:21:02Z |
 | 11 | pending | composed_iou | 0.999999191166753 | plan-14-kimi-verdicts/task-11-e2e.md | 2026-04-23T04:21:02Z |
+| 12 | pending | verified_count | 3332 | n/a | 2026-04-23T04:36:41Z |
 
 ## Cross-reference
 

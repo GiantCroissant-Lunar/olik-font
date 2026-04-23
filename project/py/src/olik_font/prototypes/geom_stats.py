@@ -40,12 +40,9 @@ def inertia_spread(record: Mapping[str, object]) -> float:
 
 
 def _expected_centroid(record: Mapping[str, object]) -> Point:
-    mmh_paths = tuple(_string_list(record.get("mmh_strokes")))
-    if mmh_paths:
-        normalized, _ = normalize_paths_to_canonical(
-            mmh_paths, (0.0, 0.0, _CANVAS_SCALE, _CANVAS_SCALE)
-        )
-        return _weighted_centroid(tuple(bbox_of_paths([path]) for path in normalized))
+    mmh_bboxes = _normalized_mmh_bboxes(record.get("mmh_strokes"))
+    if mmh_bboxes:
+        return _weighted_centroid(mmh_bboxes)
     root_bbox = _layout_root_bbox(record)
     return _bbox_center(root_bbox) if root_bbox is not None else glyph_centroid(record)
 
@@ -111,6 +108,25 @@ def _bbox_value(value: object) -> BBox | None:
         return None
     coords = tuple(float(coord) for coord in value)
     return (coords[0], coords[1], coords[2], coords[3])
+
+
+def _normalized_mmh_bboxes(value: object) -> tuple[BBox, ...]:
+    mmh_paths = tuple(_string_list(value))
+    if not mmh_paths:
+        return ()
+    try:
+        normalized, _ = normalize_paths_to_canonical(
+            mmh_paths, (0.0, 0.0, _CANVAS_SCALE, _CANVAS_SCALE)
+        )
+    except Exception:
+        return ()
+    bboxes: list[BBox] = []
+    for path in normalized:
+        try:
+            bboxes.append(bbox_of_paths([path]))
+        except Exception:
+            continue
+    return tuple(bboxes)
 
 
 def _string_list(value: object) -> tuple[str, ...]:

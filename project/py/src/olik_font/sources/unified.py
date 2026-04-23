@@ -161,6 +161,40 @@ def _auto_partition_nodes(
     return tuple(nodes)
 
 
+def _has_complete_leaf_measurements(nodes: tuple[PartitionNode, ...]) -> bool:
+    for node in nodes:
+        if node.children:
+            if not _has_complete_leaf_measurements(node.children):
+                return False
+            continue
+        if node.source_stroke_indices is None:
+            return False
+    return True
+
+
+def _top_level_partition_nodes(
+    entry: dict[str, Any],
+    matches: list[list[int] | None] | None,
+) -> tuple[PartitionNode, ...] | None:
+    raw_components = entry.get("components", [])
+    if not isinstance(raw_components, list) or not raw_components:
+        return None
+    groups = top_level_partition(matches)
+    nodes: list[PartitionNode] = []
+    for index, component in enumerate(raw_components):
+        indices = None
+        if groups is not None and index < len(groups):
+            indices = tuple(groups[index])
+        nodes.append(
+            PartitionNode(
+                component=str(component),
+                mode="keep",
+                source_stroke_indices=indices,
+            )
+        )
+    return tuple(nodes)
+
+
 def _decomposition_from_component_tree(
     entry: dict[str, Any] | None,
     matches: list[list[int] | None] | None,
@@ -175,8 +209,13 @@ def _decomposition_from_component_tree(
         if not isinstance(raw_components, list) or not raw_components:
             return None
         raw_tree = [{"char": str(component), "components": []} for component in raw_components]
+    partition = _auto_partition_nodes(raw_tree, matches)
+    if matches is not None and not _has_complete_leaf_measurements(partition):
+        top_level = _top_level_partition_nodes(entry, matches)
+        if top_level is not None:
+            partition = top_level
     return Decomposition(
-        partition=_auto_partition_nodes(raw_tree, matches),
+        partition=partition,
         source=source,
         confidence=1.0,
     )
