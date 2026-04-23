@@ -72,6 +72,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     db_export = db_sub.add_parser("export", help="dump DB back to JSON")
     db_export.add_argument("--out", required=True, type=Path)
 
+    db_sub.add_parser(
+        "recompute-counts",
+        help="recompute prototype productive_count values from uses edges",
+    )
+
     ext = subparsers.add_parser("extract", help="bulk auto-extraction pipeline")
     ext_sub = ext.add_subparsers(dest="ext_cmd", required=True)
 
@@ -224,6 +229,7 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
     from olik_font.sink.connection import connect
     from olik_font.sink.schema import ensure_schema
     from olik_font.sink.surrealdb import (
+        compute_productive_counts,
         upsert_glyph,
         upsert_has_kangxi,
         upsert_prototype,
@@ -279,6 +285,7 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
             }
         },
     )
+    compute_productive_counts(db)
     return 0 if len(records) == len(args.chars) else 1
 
 
@@ -300,6 +307,20 @@ def _cmd_db_reset(args: argparse.Namespace) -> int:
     db.query(f"DEFINE DATABASE {cfg.database};")
     db.use(cfg.namespace, cfg.database)
     ensure_schema(db)
+    return 0
+
+
+def _cmd_db_recompute_counts(_args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+    from olik_font.sink.surrealdb import compute_productive_counts
+
+    db = connect()
+    ensure_schema(db)
+    counts = compute_productive_counts(db)
+    print(f"recomputed productive_count for {len(counts)} prototypes")
+    for proto_id, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:10]:
+        print(f"  {proto_id} {count}")
     return 0
 
 
@@ -699,6 +720,8 @@ def main() -> int:
             return _cmd_db_reset(args)
         if args.db_cmd == "export":
             return _cmd_db_export(args)
+        if args.db_cmd == "recompute-counts":
+            return _cmd_db_recompute_counts(args)
     if args.cmd == "extract":
         if args.ext_cmd == "auto":
             return _cmd_extract_auto(args)

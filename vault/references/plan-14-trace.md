@@ -48,6 +48,7 @@ workflow.
 | 4 | pending | new_tables_in_schema | 3 | n/a | 2026-04-23T02:34:22Z |
 | 5 | pending | has_kangxi_edges_in_sample | 99 | n/a | 2026-04-23T02:45:49Z |
 | 5 | pending | glyphs_with_etymology_in_sample | 97 | n/a | 2026-04-23T02:45:49Z |
+| 6 | pending | top10_overlap_with_hanzicraft | 0/10 | n/a | 2026-04-23T02:55:48Z |
 
 ## Cross-reference
 

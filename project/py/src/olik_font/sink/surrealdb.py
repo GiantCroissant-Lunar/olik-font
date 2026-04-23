@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from surrealdb import Surreal
@@ -33,6 +34,21 @@ def _query_rows(payload: object) -> list[dict[str, Any]]:
         if isinstance(result, list):
             return result
     raise TypeError(f"unexpected query payload: {type(payload)!r}")
+
+
+def _record_id_component(value: object) -> str:
+    """Extract the raw record-id component from a Surreal record reference."""
+    for attr in ("id", "record_id"):
+        raw = getattr(value, attr, None)
+        if isinstance(raw, str):
+            return raw
+    text = str(value)
+    match = re.search(r"record_id='([^']+)'", text)
+    if match is not None:
+        return match.group(1)
+    if ":" in text:
+        return text.split(":", 1)[1].removeprefix("⟨").removesuffix("⟩")
+    return text
 
 
 def _upsert_relation_edge(
@@ -253,6 +269,20 @@ def upsert_has_kangxi(
         out_id=kangxi_proto_id,
         unique_on_in_only=True,
     )
+
+
+def compute_productive_counts(db: Surreal) -> dict[str, int]:
+    """Recompute `prototype.productive_count` from `uses` edge counts."""
+    rows = _query_rows(db.query("SELECT out AS proto_ref, count() AS n FROM uses GROUP BY out;"))
+    counts = {_record_id_component(row["proto_ref"]): int(row["n"]) for row in rows}
+
+    db.query("UPDATE prototype SET productive_count = 0;")
+    for proto_id, count in counts.items():
+        db.query(
+            "UPDATE type::record('prototype', $proto_id) SET productive_count = $count;",
+            {"proto_id": proto_id, "count": count},
+        )
+    return counts
 
 
 def upsert_variant_of_edge(
