@@ -68,6 +68,7 @@ def test_record_carries_iou_report(lib_and_plan):
     record = build_glyph_record("明", resolved, cs, lib, mmh_char=chars["明"])
     iou = record["metadata"]["iou_report"]
     assert "mean" in iou and "min" in iou and "per_stroke" in iou
+    assert "centroid_dist" in iou and "inertia_spread" in iou
 
 
 def test_optimal_bbox_scores_uses_hungarian_solver(monkeypatch):

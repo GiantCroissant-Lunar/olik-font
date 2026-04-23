@@ -52,6 +52,7 @@ workflow.
 | 7 | pending | kimi_pass_count_of_4 | 4 | plan-14-kimi-verdicts/task-07-decomp-explorer.md | 2026-04-23T03:18:50Z |
 | 8 | pending | authored_file_validates | true | n/a | 2026-04-23T03:33:33Z |
 | 9 | pending | kimi_verdict | pass | plan-14-kimi-verdicts/task-09-proto-browser.md | 2026-04-23T03:46:55Z |
+| 10 | pending | pearson_iou_vs_centroid | 0.9594645732086928 | n/a | 2026-04-23T04:06:54Z |
 
 ## Cross-reference
 

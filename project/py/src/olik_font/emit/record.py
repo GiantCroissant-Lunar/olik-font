@@ -18,6 +18,7 @@ from olik_font.geom import (
     bbox_to_bbox_affine,
     normalize_paths_to_canonical,
 )
+from olik_font.prototypes.geom_stats import centroid_distance, inertia_spread
 from olik_font.sources.makemeahanzi import MmhChar
 from olik_font.types import Affine, BBox, InstancePlacement, PrototypeLibrary
 
@@ -52,7 +53,7 @@ def build_glyph_record(
 
     iou = _build_iou_report(strokes, mmh_char)
 
-    return {
+    record = {
         "schema_version": "0.1",
         "glyph_id": char,
         "unicode": _UNICODE.get(char, "U+0000"),
@@ -91,6 +92,9 @@ def build_glyph_record(
             "iou_report": iou,
         },
     }
+    record["metadata"]["iou_report"]["centroid_dist"] = centroid_distance(record)
+    record["metadata"]["iou_report"]["inertia_spread"] = inertia_spread(record)
+    return record
 
 
 def _affine_to_dict(a: Affine) -> dict:
