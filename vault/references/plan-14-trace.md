@@ -49,6 +49,7 @@ workflow.
 | 5 | pending | has_kangxi_edges_in_sample | 99 | n/a | 2026-04-23T02:45:49Z |
 | 5 | pending | glyphs_with_etymology_in_sample | 97 | n/a | 2026-04-23T02:45:49Z |
 | 6 | pending | top10_overlap_with_hanzicraft | 0/10 | n/a | 2026-04-23T02:55:48Z |
+| 7 | pending | kimi_pass_count_of_4 | 4 | plan-14-kimi-verdicts/task-07-decomp-explorer.md | 2026-04-23T03:18:50Z |
 
 ## Cross-reference
 

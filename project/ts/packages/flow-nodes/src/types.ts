@@ -6,12 +6,16 @@ export interface PrototypeNodeData extends Record<string, unknown> {
   hostingChars: readonly string[];
 }
 
+export type DecompNodeTone = "leaf" | "measured" | "refine" | "replaced";
+
 export interface DecompNodeData extends Record<string, unknown> {
   char: string;
   operator: string | null;
   components: readonly string[];
   wouldMode?: "keep" | "refine" | "replace";
   ruleId?: string;
+  sourceBadge?: string | null;
+  tone?: DecompNodeTone;
 }
 
 export interface PlacementNodeData extends Record<string, unknown> {

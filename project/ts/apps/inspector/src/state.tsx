@@ -35,15 +35,7 @@ export type AppAction =
 
 export const SEED_CHARS = ["明", "清", "國", "森"] as const;
 
-const initial: AppState = {
-  library: null,
-  records: {},
-  traces: {},
-  char: "明",
-  view: "decomposition",
-  loading: true,
-  error: null,
-};
+const initial = createInitialState();
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -94,6 +86,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
     })();
   }, []);
 
+  React.useEffect(() => {
+    const url = new URL(window.location.href);
+    url.pathname = `/glyph/${state.char}`;
+    if (state.view === "decomposition") {
+      url.searchParams.delete("view");
+    } else {
+      url.searchParams.set("view", state.view);
+    }
+    window.history.replaceState({}, "", url);
+  }, [state.char, state.view]);
+
   return <Ctx.Provider value={[state, dispatch]}>{children}</Ctx.Provider>;
 };
 
@@ -103,4 +106,35 @@ export function useAppState(): [AppState, React.Dispatch<AppAction>] {
     throw new Error("useAppState outside AppStateProvider");
   }
   return ctx;
+}
+
+function createInitialState(): AppState {
+  const route = readRoute(window.location);
+  return {
+    library: null,
+    records: {},
+    traces: {},
+    char: route.char,
+    view: route.view,
+    loading: true,
+    error: null,
+  };
+}
+
+function readRoute(location: Pick<Location, "pathname" | "search">): {
+  char: string;
+  view: ViewKey;
+} {
+  const params = new URLSearchParams(location.search);
+  const pathnameMatch = location.pathname.match(/^\/glyph\/(.+)$/);
+  const routeChar = pathnameMatch?.[1] ? decodeURIComponent(pathnameMatch[1]) : null;
+  const char = routeChar && SEED_CHARS.includes(routeChar as (typeof SEED_CHARS)[number])
+    ? routeChar
+    : "明";
+  const routeView = params.get("view");
+  const view: ViewKey =
+    routeView === "library" || routeView === "rules" || routeView === "placement"
+      ? routeView
+      : "decomposition";
+  return { char, view };
 }

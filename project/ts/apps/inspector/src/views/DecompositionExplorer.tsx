@@ -1,10 +1,27 @@
 import * as React from "react";
+import dagre from "@dagrejs/dagre";
 import { ReactFlow, type Edge, type Node } from "@xyflow/react";
 import { DecompNode, NODE_TYPE_KEYS } from "@olik/flow-nodes";
 import type { LayoutNode } from "@olik/glyph-schema";
 import { useAppState } from "../state.js";
 
+type ExplorerNodeTone = "leaf" | "measured" | "refine" | "replaced";
+
+interface ExplorerNodeData extends Record<string, unknown> {
+  char: string;
+  operator: string | null;
+  components: readonly string[];
+  wouldMode?: "keep" | "refine" | "replace";
+  ruleId?: string;
+  sourceBadge?: string | null;
+  tone: ExplorerNodeTone;
+}
+
 const nodeTypes = { [NODE_TYPE_KEYS.decomp]: DecompNode };
+const NODE_WIDTH = 180;
+const NODE_HEIGHT = 126;
+const EDGE_COLOR = "#94a3b8";
+const SOURCE_BADGES = new Set(["authored", "animcjk", "mmh", "cjk-decomp"]);
 
 export const DecompositionExplorer: React.FC = () => {
   const [state] = useAppState();
@@ -21,59 +38,112 @@ export const DecompositionExplorer: React.FC = () => {
   const { nodes, edges } = layoutTreeToFlow(record.layout_tree, record.glyph_id);
 
   return (
-    <div style={{ height: "calc(100vh - 160px)" }}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView />
+    <div
+      data-testid="decomposition-explorer"
+      style={{
+        height: "calc(100vh - 160px)",
+        background:
+          "radial-gradient(circle at top, rgba(14,165,233,0.08), transparent 40%), #f8fafc",
+      }}
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        minZoom={0.2}
+        defaultEdgeOptions={{ style: { stroke: EDGE_COLOR, strokeWidth: 1.5 } }}
+      />
     </div>
   );
 };
 
-function layoutTreeToFlow(root: LayoutNode, rootChar: string): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = [];
+export function layoutTreeToFlow(
+  root: LayoutNode,
+  rootChar: string,
+): { nodes: Node<ExplorerNodeData>[]; edges: Edge[] } {
+  const graph = new dagre.graphlib.Graph();
+  graph.setGraph({
+    rankdir: "TB",
+    ranksep: 96,
+    nodesep: 48,
+    marginx: 40,
+    marginy: 24,
+  });
+  graph.setDefaultEdgeLabel(() => ({}));
+
+  const entries: Array<{ node: LayoutNode; parentId: string | null }> = [];
   const edges: Edge[] = [];
 
-  const levels = new Map<number, LayoutNode[]>();
-  (function index(node: LayoutNode, depth: number) {
-    const arr = levels.get(depth) ?? [];
-    arr.push(node);
-    levels.set(depth, arr);
-    (node.children ?? []).forEach((child) => index(child, depth + 1));
-  })(root, 0);
-
-  const dx = 220;
-  const dy = 140;
-  const positions = new Map<string, { x: number; y: number }>();
-
-  for (const [depth, arr] of levels.entries()) {
-    const start = -((arr.length - 1) * dx) / 2;
-    arr.forEach((node, i) => {
-      positions.set(node.id, { x: 640 + start + i * dx, y: 60 + depth * dy });
-    });
-  }
-
-  (function build(node: LayoutNode, parentId: string | null) {
-    const pos = positions.get(node.id)!;
-    const isRoot = parentId === null;
-    const label = isRoot ? rootChar : node.prototype_ref?.replace("proto:", "") ?? node.id;
-
-    nodes.push({
-      id: node.id,
-      position: pos,
-      type: NODE_TYPE_KEYS.decomp,
-      data: {
-        char: label,
-        operator: (node.decomp_source as { operator?: string } | undefined)?.operator ?? null,
-        components: (node.children ?? []).map((child) => child.prototype_ref?.replace("proto:", "") ?? child.id),
-        wouldMode: node.mode,
-        ruleId: node.input_adapter,
-      },
-    });
-
+  (function visit(node: LayoutNode, parentId: string | null) {
+    entries.push({ node, parentId });
+    graph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
     if (parentId) {
-      edges.push({ id: `${parentId}->${node.id}`, source: parentId, target: node.id });
+      graph.setEdge(parentId, node.id);
+      edges.push({
+        id: `${parentId}->${node.id}`,
+        source: parentId,
+        target: node.id,
+      });
     }
-
-    (node.children ?? []).forEach((child) => build(child, node.id));
+    (node.children ?? []).forEach((child) => visit(child, node.id));
   })(root, null);
 
+  dagre.layout(graph);
+
+  const nodes = entries.map(({ node, parentId }) => {
+    const position = graph.node(node.id);
+    return {
+      id: node.id,
+      position: {
+        x: position.x - NODE_WIDTH / 2,
+        y: position.y - NODE_HEIGHT / 2,
+      },
+      type: NODE_TYPE_KEYS.decomp,
+      data: {
+        char: parentId === null ? rootChar : labelForNode(node),
+        operator: operatorForNode(node),
+        components: (node.children ?? []).map(labelForNode),
+        wouldMode: node.mode,
+        ruleId: node.input_adapter,
+        sourceBadge: sourceBadgeForNode(node),
+        tone: toneForNode(node),
+      },
+    } satisfies Node<ExplorerNodeData>;
+  });
+
   return { nodes, edges };
+}
+
+function labelForNode(node: LayoutNode): string {
+  return node.prototype_ref?.replace("proto:", "") ?? node.id;
+}
+
+function operatorForNode(node: LayoutNode): string | null {
+  const source = node.decomp_source as { operator?: string | null } | undefined;
+  return source?.operator ?? null;
+}
+
+function sourceBadgeForNode(node: LayoutNode): string | null {
+  const source = node.decomp_source as
+    | { source?: string | null; adapter?: string | null }
+    | undefined;
+  const candidate = source?.source ?? source?.adapter ?? null;
+  return candidate && SOURCE_BADGES.has(candidate) ? candidate : null;
+}
+
+function toneForNode(node: LayoutNode): ExplorerNodeTone {
+  if (node.mode === "replace" || node.input_adapter === "replaced") {
+    return "replaced";
+  }
+  if ((node.children?.length ?? 0) === 0 || node.input_adapter === "leaf") {
+    return "leaf";
+  }
+  if (node.mode === "refine" || node.input_adapter === "refine") {
+    return "refine";
+  }
+  return "measured";
 }
