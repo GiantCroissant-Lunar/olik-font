@@ -16,11 +16,16 @@ from olik_font.types import Affine, InstancePlacement
 _INSTANCE_COUNTER = "_ctr"
 
 
-def build_instance_tree(char: str, plan: ExtractionPlan) -> InstancePlacement:
+def build_instance_tree(
+    char: str,
+    plan: ExtractionPlan,
+    *,
+    decomp_source: dict[str, object] | None = None,
+) -> InstancePlacement:
     """Walk a glyph's plan; emit an InstancePlacement tree with identity transforms."""
     gp = plan.glyphs[char]
     state = {_INSTANCE_COUNTER: 0}
-    return _build_glyph(char, gp, plan.by_prototype_id, state)
+    return _build_glyph(char, gp, plan.by_prototype_id, state, decomp_source=decomp_source)
 
 
 def _fresh_id(name: str, state: dict) -> str:
@@ -33,6 +38,8 @@ def _build_glyph(
     gp: GlyphPlan,
     by_prototype_id,
     state: dict,
+    *,
+    decomp_source: dict[str, object] | None,
 ) -> InstancePlacement:
     children = tuple(
         _build_node(c, root_char=char, by_prototype_id=by_prototype_id, depth=1, state=state)
@@ -46,7 +53,7 @@ def _build_glyph(
         depth=0,
         children=children,
         input_adapter="extraction_plan",
-        decomp_source={"char": char, "adapter": "extraction_plan"},
+        decomp_source=decomp_source or {"char": char, "adapter": "extraction_plan"},
     )
 
 

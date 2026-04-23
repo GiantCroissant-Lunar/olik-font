@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import platform
 import sys
 from collections import Counter
@@ -10,8 +9,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 from olik_font.bulk import variant_match
 from olik_font.bulk.charlist import load_moe_4808, select_buckets
@@ -31,6 +28,7 @@ from olik_font.sink.surrealdb import (
     upsert_prototype,
     upsert_variant_of_edge,
 )
+from olik_font.sources.cjk_decomp import load_cjk_entries, load_cjk_overrides
 from olik_font.sources.makemeahanzi import (
     MmhChar,
 )
@@ -80,82 +78,19 @@ def _record_key(value: object, table: str) -> str:
     return text
 
 
-def _load_cjk_overrides(path: Path = _DEFAULT_CJK_OVERRIDES) -> dict[str, dict[str, Any]]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"failed to read {path}: expected mapping")
-
-    overrides: dict[str, dict[str, Any]] = {}
-    for char, entry in raw.items():
-        if not isinstance(char, str) or not char:
-            raise ValueError(f"cjk override key must be a non-empty string: {char!r}")
-        if not isinstance(entry, dict):
-            raise ValueError(f"cjk override for {char!r} must be a mapping")
-        if "operator" not in entry or "components" not in entry:
-            raise ValueError(f"cjk override for {char!r} must include operator and components")
-
-        operator = entry["operator"]
-        if operator is not None and not isinstance(operator, str):
-            raise ValueError(f"cjk override operator for {char!r} must be a string or null")
-
-        components = entry["components"]
-        if not isinstance(components, list) or any(
-            not isinstance(component, str) or not component for component in components
-        ):
-            raise ValueError(f"cjk override components for {char!r} must be a list[str]")
-
-        overrides[char] = {
-            "operator": operator,
-            "components": list(components),
-        }
-    return overrides
-
-
 def _load_cjk_entries(
     path: Path = _DEFAULT_CJK,
     *,
     overrides_path: Path = _DEFAULT_CJK_OVERRIDES,
 ) -> dict[str, dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    entries = raw.get("entries", {})
-    merged_entries = {
-        char: dict(entry) for char, entry in entries.items() if isinstance(entry, dict)
-    }
-
-    for char, entry in _load_cjk_overrides(overrides_path).items():
-        merged_entries[char] = dict(entry)
+    entries = load_cjk_entries(path, overrides_path=overrides_path)
+    for char, entry in load_cjk_overrides(overrides_path).items():
         print(
             f"cjk-decomp override: {char} -> operator={entry['operator']!r} "
             f"components={entry['components']}",
             file=sys.stderr,
         )
-
-    def build_component_tree(component_char: str, seen: frozenset[str]) -> dict[str, Any]:
-        if component_char in seen:
-            return {"char": component_char, "components": []}
-
-        child_entry = merged_entries.get(component_char)
-        raw_children = child_entry.get("components", []) if isinstance(child_entry, dict) else []
-        if not isinstance(raw_children, list) or not raw_children:
-            return {"char": component_char, "components": []}
-
-        next_seen = seen | {component_char}
-        return {
-            "char": component_char,
-            "operator": child_entry.get("operator"),
-            "components": [build_component_tree(child, next_seen) for child in raw_children],
-        }
-
-    enriched: dict[str, dict[str, Any]] = {}
-    for char, entry in merged_entries.items():
-        components = entry.get("components", []) if isinstance(entry, dict) else []
-        enriched[char] = {
-            **entry,
-            "component_tree": [
-                build_component_tree(comp, frozenset({char})) for comp in components
-            ],
-        }
-    return enriched
+    return entries
 
 
 def _proto_index_from_db(db) -> ProtoIndex:
@@ -367,18 +302,18 @@ def run_batch(
                     "medians": loaded.medians,
                 }
 
-        host_dict = lookup.char_dictionary_lookup(ch)
-        host_matches = host_dict.matches if host_dict is not None else None
+        decomposition = lookup.char_decomposition_lookup(ch)
 
         result = plan_char(
             char=ch,
             cjk_entry=entry,
             mmh=planner_mmh,
-            matches=host_matches,
+            matches=None,
             index=index,
             probe_iou=probe,
             gate=iou_gate,
             cap=cap,
+            decomposition=decomposition,
             cjk_entries=cjk,
             graphics_lookup=lambda component: (
                 mmh.get(component) or lookup.char_graphics_lookup(component)
@@ -420,7 +355,21 @@ def run_batch(
         library = PrototypeLibrary()
         try:
             extract_all_prototypes(synthetic, mmh, library)
-            tree = build_instance_tree(ch, synthetic)
+            tree = build_instance_tree(
+                ch,
+                synthetic,
+                decomp_source={
+                    "char": ch,
+                    "adapter": decomposition.source
+                    if decomposition is not None
+                    else "extraction_plan",
+                    **(
+                        {"confidence": decomposition.confidence}
+                        if decomposition is not None
+                        else {}
+                    ),
+                },
+            )
             resolved, constraints = compose_transforms(tree, glyph_bbox=_GLYPH_BBOX)
             record = build_glyph_record(
                 ch,
@@ -428,6 +377,7 @@ def run_batch(
                 constraints,
                 library,
                 mmh_char=mmh[ch],
+                decomp_source=decomposition.source if decomposition is not None else "cjk-decomp",
             )
         except Exception as exc:
             if not dry_run and run_id is not None:

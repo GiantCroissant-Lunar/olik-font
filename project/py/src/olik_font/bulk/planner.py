@@ -1,9 +1,9 @@
-"""Auto-plan a single character from its cjk-decomp entry + MMH data.
+"""Auto-plan a single character from a unified decomposition + MMH data.
 
-Placement comes from MMH's `matches` partition, not from any preset
-vocabulary. For each component instance the planner reads the measured
-stroke indices from MMH, carries them on the GlyphNodePlan, and emits
-`mode="refine"` subtrees when MMH exposes nested component partitions.
+Placement comes from per-instance measured stroke indices, not from any
+categorical layout vocabulary. Source lookup decides whether that
+partition came from authored data, animCJK, MMH, or cjk-decomp, and the
+planner turns the chosen tree into a GlyphPlan.
 
 The Hungarian matcher in `variant_match.py` is used only as an IoU
 probe to decide canonical-reuse vs. variant-extraction; both sides of
@@ -24,6 +24,7 @@ from olik_font.bulk.reuse import ProtoIndex, VariantCap, decide_prototype, name_
 from olik_font.geom import bbox_of_paths, union_bbox
 from olik_font.prototypes.carve import DEFAULT_CARVED_COMPONENTS, carve_component
 from olik_font.prototypes.extraction_plan import GlyphNodePlan, GlyphPlan, PrototypePlan
+from olik_font.sources.unified import Decomposition, PartitionNode
 from olik_font.types import BBox
 
 
@@ -220,41 +221,63 @@ def _build_single_component_plan(
     )
 
 
-def _component_name(component: object) -> str:
-    if isinstance(component, dict):
-        return str(component.get("char") or "")
-    return str(component)
-
-
-def _component_children(component: object) -> list[object]:
-    if not isinstance(component, dict):
-        return []
-    raw_children = component.get("components")
-    if not isinstance(raw_children, list):
-        return []
-    return list(raw_children)
-
-
-def _components_for_entry(cjk_entry: dict[str, Any]) -> list[object]:
-    raw_tree = cjk_entry.get("component_tree")
-    if isinstance(raw_tree, list):
-        return list(raw_tree)
-
-    raw_components = cjk_entry.get("components", [])
-    if isinstance(raw_components, tuple):
-        return list(raw_components)
-    if isinstance(raw_components, list):
-        return list(raw_components)
-    return []
-
-
-def _partition_at_path(
+def _decomposition_from_legacy(
+    cjk_entry: dict[str, Any] | None,
     matches: list[list[int] | None] | None,
-    path: tuple[int, ...],
-) -> list[list[int]] | None:
-    if not path:
-        return top_level_partition(matches)
-    return nested_partition(matches, path_prefix=path)
+) -> Decomposition | None:
+    if cjk_entry is None:
+        return None
+
+    raw_tree = cjk_entry.get("component_tree")
+    if not isinstance(raw_tree, list) or not raw_tree:
+        raw_components = cjk_entry.get("components", [])
+        if not isinstance(raw_components, list) or not raw_components:
+            return None
+        raw_tree = [{"char": str(component), "components": []} for component in raw_components]
+
+    def partition_for_path(path: tuple[int, ...]) -> list[list[int]] | None:
+        if not path:
+            return top_level_partition(matches)
+        return nested_partition(matches, path_prefix=path)
+
+    def build_nodes(
+        nodes: list[dict[str, Any]],
+        path: tuple[int, ...] = (),
+    ) -> tuple[PartitionNode, ...]:
+        current_partition = partition_for_path(path)
+        current_nodes = list(nodes)
+        if current_partition is not None:
+            if len(current_partition) > len(current_nodes):
+                if len(current_nodes) != 1:
+                    raise ValueError(f"MMH partition shape mismatch at {path}: {current_partition}")
+                current_nodes = [deepcopy(current_nodes[0]) for _ in current_partition]
+            if len(current_partition) != len(current_nodes):
+                raise ValueError(f"MMH partition shape mismatch at {path}: {current_partition}")
+
+        out: list[PartitionNode] = []
+        for index, node in enumerate(current_nodes):
+            child_path = (*path, index)
+            raw_children = node.get("components", [])
+            children = (
+                build_nodes(raw_children, child_path)
+                if isinstance(raw_children, list) and raw_children
+                else ()
+            )
+            out.append(
+                PartitionNode(
+                    component=str(node.get("char") or ""),
+                    mode="refine" if children else "keep",
+                    source_stroke_indices=(
+                        None
+                        if children or current_partition is None
+                        else tuple(current_partition[index])
+                    ),
+                    children=children,
+                )
+            )
+        return tuple(out)
+
+    return Decomposition(partition=build_nodes(raw_tree), source="mmh", confidence=1.0)
 
 
 def _refine_proto_ref(char: str, path: tuple[int, ...]) -> str:
@@ -262,9 +285,19 @@ def _refine_proto_ref(char: str, path: tuple[int, ...]) -> str:
     return f"proto:refine_{name_to_slug(char)}_{suffix}"
 
 
+def _existing_proto(proto_id: str, index: ProtoIndex, new_protos: list[PrototypePlan]) -> bool:
+    return any(proto.id == proto_id for proto in index.prototypes) or any(
+        proto.id == proto_id for proto in new_protos
+    )
+
+
+def _name_for_authored_proto(proto_id: str) -> str:
+    return proto_id.removeprefix("proto:")
+
+
 def plan_char(
     char: str,
-    cjk_entry: dict,
+    cjk_entry: dict | None,
     mmh: dict,
     matches: list[list[int] | None] | None,
     index: ProtoIndex,
@@ -272,44 +305,38 @@ def plan_char(
     gate: float,
     cap: VariantCap,
     *,
+    decomposition: Decomposition | None = None,
     cjk_entries: dict[str, dict[str, Any]] | None = None,
     graphics_lookup: Callable[[str], Any | None] | None = None,
     dictionary_lookup: Callable[[str], Any | None] | None = None,
     carved_cache_path: Path = DEFAULT_CARVED_COMPONENTS,
 ) -> PlanResult:
-    """Return a PlanResult for one char without touching the DB.
-
-    `matches` is the host char's MMH `matches` field (from dictionary.txt).
-    Without it the planner cannot measure per-component slots and the
-    char is returned as PlanFailed — caller can retry later when MMH
-    coverage expands.
-    """
-    # Measured placement doesn't need an op whitelist: the MMH `matches`
-    # partition IS the placement authority. The operator name stays as
-    # metadata on the plan so downstream can surface structural intent,
-    # but it does not gate planning. PlanUnsupported is reserved for the
-    # narrow case where cjk-decomp itself has nothing to offer.
+    """Return a PlanResult for one char without touching the DB."""
     if char not in mmh:
         return PlanFailed(reason=f"MMH missing {char}")
 
-    components = _components_for_entry(cjk_entry)
-    if len(components) == 0:
-        return PlanUnsupported(missing_op=cjk_entry.get("operator", "") or "<empty>")
+    if decomposition is None:
+        try:
+            decomposition = _decomposition_from_legacy(cjk_entry, matches)
+        except ValueError as exc:
+            return PlanFailed(reason=str(exc))
+    if decomposition is None or len(decomposition.partition) == 0:
+        missing_op = "<empty>"
+        if isinstance(cjk_entry, dict):
+            missing_op = cjk_entry.get("operator", "") or "<empty>"
+        return PlanUnsupported(missing_op=missing_op)
 
     host_strokes = _strokes_of(mmh[char])
 
-    # Single-component decomposition (atomic chars like 一, or "char IS its
-    # sole prototype" cases): no partition needed — the char itself is the
-    # one prototype. This is the valid answer when MMH's matches is [None]
-    # or [] for a 1-component decomp.
-    if len(components) == 1 and top_level_partition(matches) is None:
-        comp_name = _component_name(components[0])
-        # Treat the whole host as the sole prototype. If the component name
-        # differs from the host char (e.g. 一 decomposes to ㇐), we still
-        # use ALL host strokes since there is nothing to partition.
+    if (
+        len(decomposition.partition) == 1
+        and not decomposition.partition[0].children
+        and decomposition.partition[0].component is not None
+        and decomposition.partition[0].source_stroke_indices is None
+    ):
         return _build_single_component_plan(
             char=char,
-            comp_name=comp_name or char,
+            comp_name=decomposition.partition[0].component or char,
             host_stroke_count=len(host_strokes),
             index=index,
             slot=_measure_slot(host_strokes, tuple(range(len(host_strokes)))),
@@ -319,55 +346,60 @@ def plan_char(
             mmh=mmh,
         )
 
-    if top_level_partition(matches) is None:
-        return PlanFailed(reason=f"MMH partition shape mismatch for {char}: None")
     new_protos: list[PrototypePlan] = []
     variant_edges: list[tuple[str, str]] = []
     working_index = ProtoIndex(prototypes=list(index.prototypes))
 
     def build_nodes(
-        current_components: list[object], path: tuple[int, ...]
+        nodes: tuple[PartitionNode, ...], path: tuple[int, ...]
     ) -> PlanFailed | list[GlyphNodePlan]:
-        current_partition = _partition_at_path(matches, path)
-        if current_partition is None:
-            return PlanFailed(
-                reason=f"MMH partition shape mismatch for {char}: {current_partition}"
-            )
-
-        expanded_components = list(current_components)
-        if len(current_partition) > len(expanded_components):
-            if len(expanded_components) != 1:
-                return PlanFailed(
-                    reason=f"MMH partition shape mismatch for {char}: {current_partition}"
-                )
-            expanded_components = [deepcopy(expanded_components[0]) for _ in current_partition]
-
-        if len(current_partition) != len(expanded_components):
-            return PlanFailed(
-                reason=f"MMH partition shape mismatch for {char}: {current_partition}"
-            )
-
         child_nodes: list[GlyphNodePlan] = []
-        for i, component in enumerate(expanded_components):
-            child_path = (*path, i)
-            comp_name = _component_name(component)
-            comp_children = _component_children(component)
-            child_partition = _partition_at_path(matches, child_path)
+        for index_in_parent, node in enumerate(nodes):
+            child_path = (*path, index_in_parent)
 
-            if comp_children and child_partition is not None:
-                nested_nodes = build_nodes(comp_children, child_path)
+            if node.children:
+                nested_nodes = build_nodes(node.children, child_path)
                 if isinstance(nested_nodes, PlanFailed):
                     return nested_nodes
+                refine_ref = node.prototype_ref or _refine_proto_ref(char, child_path)
                 child_nodes.append(
                     GlyphNodePlan(
-                        prototype_ref=_refine_proto_ref(char, child_path),
+                        prototype_ref=refine_ref,
                         mode="refine",
                         children=tuple(nested_nodes),
                     )
                 )
                 continue
 
-            partition_indices = tuple(current_partition[i])
+            partition_indices = node.source_stroke_indices
+            if partition_indices is None:
+                return PlanFailed(reason=f"missing measured partition for {char} at {child_path}")
+
+            if node.prototype_ref is not None:
+                if not _existing_proto(node.prototype_ref, working_index, new_protos):
+                    proto = PrototypePlan(
+                        id=node.prototype_ref,
+                        name=_name_for_authored_proto(node.prototype_ref),
+                        from_char=char,
+                        stroke_indices=partition_indices,
+                        roles=("meaning",),
+                        anchors={},
+                    )
+                    new_protos.append(proto)
+                    working_index.prototypes.append(proto)
+                child_nodes.append(
+                    GlyphNodePlan(
+                        prototype_ref=node.prototype_ref,
+                        mode=node.mode,
+                        source_stroke_indices=partition_indices,
+                    )
+                )
+                continue
+
+            comp_name = node.component or ""
+            if not comp_name:
+                return PlanFailed(reason=f"missing component name for {char} at {child_path}")
+
             slot = _measure_slot(host_strokes, partition_indices)
             decision = decide_prototype(
                 component_char=comp_name,
@@ -422,7 +454,7 @@ def plan_char(
             )
         return child_nodes
 
-    child_nodes = build_nodes(components, ())
+    child_nodes = build_nodes(decomposition.partition, ())
     if isinstance(child_nodes, PlanFailed):
         return child_nodes
 

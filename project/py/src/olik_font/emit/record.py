@@ -45,6 +45,8 @@ def build_glyph_record(
     constraints: tuple[Primitive, ...],
     library: PrototypeLibrary,
     mmh_char: MmhChar,
+    *,
+    decomp_source: str = "cjk-decomp",
 ) -> dict:
     strokes = flatten_strokes(resolved_tree, library)
 
@@ -55,7 +57,7 @@ def build_glyph_record(
         "glyph_id": char,
         "unicode": _UNICODE.get(char, "U+0000"),
         "coord_space": {"width": 1024, "height": 1024, "origin": "top-left", "y_axis": "down"},
-        "source": {"stroke_source": "make-me-a-hanzi", "decomp_source": "cjk-decomp"},
+        "source": {"stroke_source": "make-me-a-hanzi", "decomp_source": decomp_source},
         "layout_tree": _node_to_dict(resolved_tree),
         "component_instances": [
             {

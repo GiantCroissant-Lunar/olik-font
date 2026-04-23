@@ -20,11 +20,13 @@ from olik_font.prototypes.extract import extract_all_prototypes
 from olik_font.prototypes.extraction_plan import load_extraction_plan
 from olik_font.rules.engine import RuleSet, apply_first_match, load_rules
 from olik_font.sources.makemeahanzi import fetch_mmh, load_mmh_dictionary, load_mmh_graphics
+from olik_font.sources.unified import load_unified_lookup
 from olik_font.styling import ComfyUIClient, stylize
 from olik_font.types import PrototypeLibrary
 
 _PY_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
+_DEFAULT_ANIMCJK_DIR = _PY_ROOT / "data" / "animcjk"
 _DEFAULT_PLAN = _PY_ROOT / "data" / "extraction_plan.yaml"
 _DEFAULT_RULES = _PY_ROOT / "src" / "olik_font" / "rules" / "rules.yaml"
 
@@ -121,6 +123,7 @@ def _build_artifacts(
     """
     graphics_path, _dictionary_path = fetch_mmh(mmh_dir)
     mmh_chars = load_mmh_graphics(graphics_path)
+    lookup = load_unified_lookup(mmh_dir, _DEFAULT_ANIMCJK_DIR)
     plan = load_extraction_plan(plan_path)
     rules = load_rules(rules_path)
     rules_doc = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
@@ -149,7 +152,16 @@ def _build_artifacts(
             decision_id=f"d:{ch}:composition",
         )
 
-        tree = build_instance_tree(ch, plan)
+        decomposition = lookup.char_decomposition_lookup(ch)
+        tree = build_instance_tree(
+            ch,
+            plan,
+            decomp_source={
+                "char": ch,
+                "adapter": decomposition.source if decomposition is not None else "extraction_plan",
+                **({"confidence": decomposition.confidence} if decomposition is not None else {}),
+            },
+        )
         resolved, constraints = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
         records[ch] = build_glyph_record(
             ch,
@@ -157,6 +169,7 @@ def _build_artifacts(
             constraints,
             library,
             mmh_char=mmh_chars[ch],
+            decomp_source=decomposition.source if decomposition is not None else "cjk-decomp",
         )
         traces[ch] = [trace_to_dict(decomp_trace), trace_to_dict(compose_trace)]
 

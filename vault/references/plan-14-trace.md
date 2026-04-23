@@ -43,6 +43,7 @@ workflow.
 |---|---|---|---|---|---|
 | 0 | pending | guard_violations | 0 | n/a | 2026-04-23T01:45:31Z |
 | 1 | pending | sample_char | 丁 | n/a | 2026-04-23T01:54:45Z |
+| 2 | pending | 4seed_iou_min | 0.9090868680424999 | n/a | 2026-04-23T02:13:58Z |
 
 ## Cross-reference
 
