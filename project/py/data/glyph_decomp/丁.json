@@ -9,12 +9,18 @@
     {
       "prototype_ref": "proto:ding_top_stroke",
       "mode": "keep",
-      "source_stroke_indices": [0]
+      "source_stroke_indices": [
+        0
+      ],
+      "children": []
     },
     {
       "prototype_ref": "proto:ding_hook_stroke",
       "mode": "keep",
-      "source_stroke_indices": [1]
+      "source_stroke_indices": [
+        1
+      ],
+      "children": []
     }
   ]
 }

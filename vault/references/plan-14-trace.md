@@ -53,6 +53,9 @@ workflow.
 | 8 | pending | authored_file_validates | true | n/a | 2026-04-23T03:33:33Z |
 | 9 | pending | kimi_verdict | pass | plan-14-kimi-verdicts/task-09-proto-browser.md | 2026-04-23T03:46:55Z |
 | 10 | pending | pearson_iou_vs_centroid | 0.9594645732086928 | n/a | 2026-04-23T04:06:54Z |
+| 11 | pending | demo_char | 丁 | n/a | 2026-04-23T04:21:02Z |
+| 11 | pending | status_flip | failed→verified | n/a | 2026-04-23T04:21:02Z |
+| 11 | pending | composed_iou | 0.999999191166753 | plan-14-kimi-verdicts/task-11-e2e.md | 2026-04-23T04:21:02Z |
 
 ## Cross-reference
 

@@ -108,6 +108,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         required=True,
         choices=["unsupported_op", "needs_review", "failed_extraction"],
     )
+    ext_retry.add_argument(
+        "--chars",
+        nargs="+",
+        help="optional subset of chars to retry from the chosen status bucket",
+    )
     ext_retry.add_argument("--iou-gate", type=float, default=0.90)
     style = subparsers.add_parser("style", help="batch stylize glyph records via ComfyUI")
     style.add_argument("chars", nargs="*")
@@ -522,6 +527,9 @@ def _cmd_extract_retry(args: argparse.Namespace) -> int:
         )
     )
     chars = [row["char"] for row in rows]
+    if args.chars:
+        wanted = set(args.chars)
+        chars = [char for char in chars if char in wanted]
     if not chars:
         print(f"no chars with status = {args.status}")
         return 0

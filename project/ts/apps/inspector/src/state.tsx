@@ -41,8 +41,8 @@ export type AppAction =
   | { type: "setView"; view: ViewKey };
 
 export const SEED_CHARS = ["明", "清", "國", "森"] as const;
-
-const initial = createInitialState();
+const DEFAULT_CHAR = "明";
+const DEFAULT_PROTO_ID = "u6708";
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -81,7 +81,8 @@ const Ctx = React.createContext<
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [state, dispatch] = React.useReducer(reducer, initial);
+  const [state, dispatch] = React.useReducer(reducer, undefined, createInitialState);
+  const initialRouteRef = React.useRef({ char: state.char, protoId: state.protoId });
 
   React.useEffect(() => {
     void (async () => {
@@ -90,12 +91,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
           "/data/prototype-library.json",
         );
         const prototypeGraph = await loadPrototypeBrowserDataUrl(
-          `/data/proto-graph-${initial.protoId}.json`,
+          `/data/proto-graph-${initialRouteRef.current.protoId}.json`,
         );
         const records: AppState["records"] = {};
         const traces: AppState["traces"] = {};
 
-        for (const ch of SEED_CHARS) {
+        const charsToLoad = [...new Set([...SEED_CHARS, initialRouteRef.current.char])];
+        for (const ch of charsToLoad) {
           records[ch] = await loadGlyphRecordUrl(`/data/glyph-record-${ch}.json`);
           traces[ch] = await loadRuleTraceUrl(`/data/rule-trace-${ch}.json`);
         }
@@ -103,7 +105,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({
         dispatch({
           type: "loaded",
           library,
-          prototypeGraphs: { [initial.protoId]: prototypeGraph },
+          prototypeGraphs: { [initialRouteRef.current.protoId]: prototypeGraph },
           records,
           traces,
         });
@@ -187,13 +189,11 @@ function readRoute(location: Pick<Location, "pathname" | "search">): {
   }
   const pathnameMatch = location.pathname.match(/^\/glyph\/(.+)$/);
   const routeChar = pathnameMatch?.[1] ? decodeURIComponent(pathnameMatch[1]) : null;
-  const char = routeChar && SEED_CHARS.includes(routeChar as (typeof SEED_CHARS)[number])
-    ? routeChar
-    : "明";
+  const char = routeChar || DEFAULT_CHAR;
   const routeView = params.get("view");
   const view: ViewKey =
     routeView === "rules" || routeView === "placement"
       ? routeView
       : "decomposition";
-  return { char, protoId: "u6708", view };
+  return { char, protoId: DEFAULT_PROTO_ID, view };
 }
