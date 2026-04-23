@@ -22,6 +22,64 @@ def _record_ref(table: str, raw: str) -> str:
     return f"{table}:`{escaped}`"
 
 
+def _query_rows(payload: object) -> list[dict[str, Any]]:
+    """Normalize surrealdb-python 1.x/2.x query payloads."""
+    if isinstance(payload, list):
+        if payload and isinstance(payload[0], dict) and "result" in payload[0]:
+            return payload[0]["result"]
+        return payload
+    if isinstance(payload, dict):
+        result = payload.get("result", [])
+        if isinstance(result, list):
+            return result
+    raise TypeError(f"unexpected query payload: {type(payload)!r}")
+
+
+def _upsert_relation_edge(
+    db: Surreal,
+    *,
+    table: str,
+    in_table: str,
+    in_id: str,
+    out_table: str,
+    out_id: str,
+    content: dict[str, Any] | None = None,
+    unique_on_in_only: bool = False,
+) -> None:
+    """Create or update a relation row without duplicating edges."""
+    if unique_on_in_only:
+        query = (
+            f"SELECT id, out FROM {table} WHERE in = type::record('{in_table}', $in_id) LIMIT 1;"
+        )
+        rows = _query_rows(db.query(query, {"in_id": in_id}))
+        if rows:
+            row = rows[0]
+            db.query("DELETE <record>$edge_id;", {"edge_id": str(row["id"])})
+    else:
+        query = (
+            f"SELECT id FROM {table} "
+            f"WHERE in = type::record('{in_table}', $in_id) "
+            f"AND out = type::record('{out_table}', $out_id) LIMIT 1;"
+        )
+        rows = _query_rows(db.query(query, {"in_id": in_id, "out_id": out_id}))
+        if rows:
+            if content:
+                db.query(
+                    "UPDATE <record>$edge_id MERGE $content;",
+                    {"edge_id": str(rows[0]["id"]), "content": content},
+                )
+            return
+
+    in_ref = _record_ref(in_table, in_id)
+    out_ref = _record_ref(out_table, out_id)
+    params: dict[str, Any] = {}
+    content_sql = ""
+    if content:
+        params["content"] = content
+        content_sql = " CONTENT $content"
+    db.query(f"RELATE {in_ref}->{table}->{out_ref}{content_sql};", params)
+
+
 def upsert_prototype(db: Surreal, proto: dict[str, Any]) -> None:
     """Create-or-replace a prototype row keyed on `proto["id"]`."""
     db.query(
@@ -137,6 +195,60 @@ def upsert_glyph_stub(
     )
 
 
+def upsert_decomposes_into(
+    db: Surreal,
+    parent_id: str,
+    child_id: str,
+    ordinal: int,
+    source: str,
+) -> None:
+    """Create-or-update a prototype->prototype decomposition edge."""
+    _upsert_relation_edge(
+        db,
+        table="decomposes_into",
+        in_table="prototype",
+        in_id=parent_id,
+        out_table="prototype",
+        out_id=child_id,
+        content={"ordinal": ordinal, "source": source},
+    )
+
+
+def upsert_appears_in(
+    db: Surreal,
+    proto_id: str,
+    glyph_char: str,
+    instance_count: int,
+) -> None:
+    """Create-or-update a prototype->glyph inverse-usage edge."""
+    _upsert_relation_edge(
+        db,
+        table="appears_in",
+        in_table="prototype",
+        in_id=proto_id,
+        out_table="glyph",
+        out_id=glyph_char,
+        content={"instance_count": instance_count},
+    )
+
+
+def upsert_has_kangxi(
+    db: Surreal,
+    glyph_char: str,
+    kangxi_proto_id: str,
+) -> None:
+    """Ensure one glyph->prototype Kangxi relation per glyph."""
+    _upsert_relation_edge(
+        db,
+        table="has_kangxi",
+        in_table="glyph",
+        in_id=glyph_char,
+        out_table="prototype",
+        out_id=kangxi_proto_id,
+        unique_on_in_only=True,
+    )
+
+
 def upsert_variant_of_edge(
     db: Surreal,
     variant_id: str,
@@ -148,23 +260,14 @@ def upsert_variant_of_edge(
     duplicate insert is an error, so we use BEGIN...IF NOT EXISTS
     semantics via SELECT-first.
     """
-    payload = db.query(
-        "SELECT id FROM variant_of "
-        "WHERE in = type::record('prototype', $v) "
-        "  AND out = type::record('prototype', $c) LIMIT 1;",
-        {"v": variant_id, "c": canonical_id},
+    existing = _query_rows(
+        db.query(
+            "SELECT id FROM variant_of "
+            "WHERE in = type::record('prototype', $v) "
+            "  AND out = type::record('prototype', $c) LIMIT 1;",
+            {"v": variant_id, "c": canonical_id},
+        )
     )
-    # surrealdb-python 1.x returns [{"result": [...]}]; 2.x returns [...]
-    # directly. Normalize both shapes.
-    if isinstance(payload, list):
-        if payload and isinstance(payload[0], dict) and "result" in payload[0]:
-            existing = payload[0]["result"]
-        else:
-            existing = payload
-    elif isinstance(payload, dict):
-        existing = payload.get("result", [])
-    else:
-        existing = []
     if existing:
         return
     # RELATE does not accept type::record() in newer SurrealDB versions;

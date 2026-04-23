@@ -45,6 +45,7 @@ workflow.
 | 1 | pending | sample_char | 丁 | n/a | 2026-04-23T01:54:45Z |
 | 2 | pending | 4seed_iou_min | 0.9090868680424999 | n/a | 2026-04-23T02:13:58Z |
 | 3 | pending | mode_dispatch_tests_passed | 3/3 | n/a | 2026-04-23T02:26:31Z |
+| 4 | pending | new_tables_in_schema | 3 | n/a | 2026-04-23T02:34:22Z |
 
 ## Cross-reference
 
