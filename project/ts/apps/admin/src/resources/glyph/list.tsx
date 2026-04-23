@@ -26,7 +26,7 @@ const STATUS_COLOR: Record<Status, string> = {
 };
 
 export function GlyphList() {
-  const [statuses, setStatuses] = useState<Status[]>(["needs_review"]);
+  const [statuses, setStatuses] = useState<Status[]>(["verified", "needs_review"]);
   const [iouRange, setIouRange] = useState<[number, number]>([0, 1]);
   const [strokeRange, setStrokeRange] = useState<[number, number]>([1, 30]);
   const [radical, setRadical] = useState("");
@@ -43,14 +43,15 @@ export function GlyphList() {
     return out;
   }, [statuses, iouRange, strokeRange, radical]);
 
-  const { data, isLoading } = useList({
+  const { query } = useList({
     resource: "glyph",
     filters,
     sorters: [{ field: "iou_mean", order: "desc" }],
     pagination: { pageSize: 200 },
   });
 
-  const rows = data?.data ?? [];
+  const isLoading = query.isLoading;
+  const rows = query.data?.data ?? [];
 
   return (
     <Stack p="md">
