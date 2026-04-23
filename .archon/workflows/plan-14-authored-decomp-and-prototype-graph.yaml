@@ -1,0 +1,406 @@
+name: plan-14-authored-decomp-and-prototype-graph
+description: >-
+  Execute Plan 14 (authored decomposition layer + prototype graph). Adds a
+  per-glyph authored override file format (`data/glyph_decomp/<char>.json`),
+  promotes MMH to a peer source behind a unified
+  `char_decomposition_lookup`, extends the SurrealDB prototype graph with
+  `decomposes_into` / `appears_in` / `has_kangxi` edges and `role` /
+  `etymology` / `productive_count` fields, upgrades the inspector
+  DecompositionExplorer (dagre + mode coloring + authoring panel), and
+  adds a new PrototypeBrowser inspector view. Each task produces a
+  measurement (programmatic or kimi-CLI visual) and appends a row to
+  `vault/references/plan-14-trace.md`. Workflow ends with tag
+  `plan-14-authored-decomp-and-prototype-graph`. Per the geometry skill,
+  no preset vocabulary may be re-introduced; Task 0 enforces this with a
+  repo-wide guard test, and `check_no_preset_regressions` re-verifies at
+  the end of the run.
+provider: codex
+model: gpt-5.4
+
+worktree:
+  enabled: true
+
+nodes:
+  - id: setup_py
+    bash: |
+      set -e
+      cd project/py
+      if [ ! -d .venv ]; then
+        python3 -m venv .venv
+      fi
+      .venv/bin/pip install --quiet --upgrade pip
+      .venv/bin/pip install --quiet -e .[dev] 2>&1 | tail -3
+      .venv/bin/pytest --version
+
+  - id: setup_ts
+    bash: |
+      set -e
+      cd project/ts
+      corepack enable >/dev/null 2>&1 || true
+      pnpm --version
+      pnpm install --frozen-lockfile=false 2>&1 | tail -5
+
+  - id: warm_mmh_cache
+    depends_on: [setup_py]
+    bash: |
+      set -e
+      cd project/py
+      .venv/bin/python -c "
+      from pathlib import Path
+      from olik_font.sources.makemeahanzi import fetch_mmh
+      fetch_mmh(Path('data/mmh'))
+      "
+
+  - id: prebuild_ts
+    depends_on: [setup_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter "@olik/glyph-schema" \
+              --filter "@olik/glyph-loader" \
+              --filter "@olik/glyph-viz" \
+              --filter "@olik/glyph-db" build 2>&1 | tail -15
+
+  - id: ensure_kimi_available
+    bash: |
+      set -e
+      if ! command -v kimi >/dev/null 2>&1; then
+        echo "VERDICT: BLOCKED — kimi CLI not on PATH; visual verification tasks (7, 9, 11) cannot complete."
+        echo "Per feedback_visual_verifier_model.md: do NOT silently substitute a smaller local vision model."
+        echo "Resolution: have the operator run 'kimi --help' interactively, or set up an alias, then retry."
+        exit 1
+      fi
+      kimi --version 2>&1 || true
+      echo "kimi CLI present"
+
+  - id: ensure_trace_ledger
+    bash: |
+      set -e
+      LEDGER=vault/references/plan-14-trace.md
+      VERDICTS_DIR=vault/references/plan-14-kimi-verdicts
+      mkdir -p "$VERDICTS_DIR"
+      if [ ! -f "$LEDGER" ]; then
+        echo "trace ledger missing — Task 0 will initialise it on first run."
+      else
+        echo "trace ledger present at $LEDGER"
+        wc -l "$LEDGER"
+      fi
+
+  - id: implement
+    depends_on: [warm_mmh_cache, prebuild_ts, ensure_kimi_available, ensure_trace_ledger]
+    loop:
+      prompt: |
+        You are Codex, implementing Plan 14 (authored decomposition layer
+        + prototype graph) task-by-task.
+
+        ## Context
+        Plan file:  `vault/plans/2026-04-23-14-authored-decomp-and-prototype-graph.md`.
+        Design:     `vault/specs/2026-04-23-authored-decomp-and-prototype-graph-design.md`.
+        Skill:      `.agent/skills/05-engine/glyph-geometry/SKILL.md` —
+                    read on first iteration. The rule is binding; if any
+                    instruction below appears to conflict with it, the
+                    skill wins.
+        Trace ledger:           `vault/references/plan-14-trace.md`
+        Kimi verdict transcripts: `vault/references/plan-14-kimi-verdicts/`
+
+        Plan 14 has 13 tasks (Task 0 through Task 12). Each task ends
+        with a commit whose message is spelled out in the plan, plus
+        appends one or more rows to the trace ledger.
+
+        ## Your single-iteration job
+
+        1. Read the plan in full on iteration 1; on later iterations only
+           read the next task section.
+        2. Read the geometry skill on iteration 1.
+        3. Run `git log --oneline -30` and match commit messages against
+           the plan's Task N commit messages.
+        4. Determine the next task:
+           - Nothing committed for Plan 14 → start at Task 0.
+           - Task K is the last committed task → start Task K+1.
+           - Task 12 committed AND the tag
+             `plan-14-authored-decomp-and-prototype-graph` is applied →
+             output `COMPLETE` on its own line.
+        5. Implement the task exactly as written.
+        6. Run the task's measurement (the plan tells you what to run).
+        7. Append the trace-ledger row(s) for this task. Format is the
+           markdown table the ledger initialises (task / commit / metric /
+           value / kimi_verdict / timestamp).
+        8. For Tasks 7, 9, 11: produce screenshots, invoke kimi CLI with
+           the prompts spelled out in the plan, save the prompt + raw
+           kimi stdout + parsed verdict to
+           `vault/references/plan-14-kimi-verdicts/task-NN-<slug>.md`.
+        9. Run the commit command exactly as the plan dictates.
+        10. Output exactly one of these on the last line of your response:
+            - `NEXT` (continue the loop)
+            - `COMPLETE` (plan done, tag applied)
+            - `BLOCKED: <one-line reason>` (stop; do not invent a fix)
+
+        ## Constraints
+
+        - Work only in the current worktree.
+        - Never amend or rebase. Fresh commits only.
+        - **NEVER reintroduce the preset vocabulary** (`preset:`,
+          `slot_bbox`, `slot_weight`, `_LEFT_RIGHT_WEIGHT`,
+          `_TOP_BOTTOM_WEIGHT`, `_ENCLOSE_PADDING`,
+          `_REPEAT_TRIANGLE_SCALE`, or the bare words `left_right` /
+          `top_bottom` / `repeat_triangle` as identifiers). Task 0 adds
+          the guard; later tasks must not weaken it. If you feel tempted
+          to write any of these strings, STOP — re-read the skill.
+        - **NEVER substitute a smaller vision model for kimi.** If kimi
+          fails on a task that needs visual verification, output
+          `BLOCKED: kimi failure — <stderr tail>` and stop. Do not call
+          gemma3, ollama models, or any local <=4B model as a fallback.
+        - **NEVER run `olik extract auto` against the host SurrealDB on
+          port 6480 without the operator's explicit say-so.** Tasks 5, 6,
+          11 touch the DB intentionally — those are scoped sync/upsert
+          calls, not bulk auto-extract.
+        - For Task 11, the demo char must come from running the listed
+          CLI command, not from a hardcoded choice.
+        - If `ruff format` rewrites a file after a commit attempt, re-
+          stage and retry with the same commit message (Plans 09.2, 10,
+          11 all hit this).
+        - If a SurrealDB schema upsert fails because a `DEFINE` already
+          exists (Surreal version doesn't support `IF NOT EXISTS` on
+          some statements), fall back to an `INFO FOR DB` check + skip,
+          and document the workaround in the commit message.
+
+        Output format: last line is EXACTLY `NEXT`, `COMPLETE`, or
+        `BLOCKED: <reason>`. No trailing text.
+      until: COMPLETE
+      fresh_context: true
+      max_iterations: 26
+      idle_timeout: 1800000
+
+  - id: run_py
+    depends_on: [implement]
+    bash: |
+      set -e
+      cd project/py && .venv/bin/pytest -q 2>&1 | tail -25
+
+  - id: run_ts
+    depends_on: [run_py]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm install --frozen-lockfile=false 2>&1 | tail -3
+      pnpm -r test 2>&1 | tail -30
+
+  - id: run_typecheck
+    depends_on: [run_ts]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r typecheck 2>&1 | tail -20
+
+  - id: run_build
+    depends_on: [run_typecheck]
+    bash: |
+      set -e
+      cd project/ts
+      pnpm -r --filter '!@olik/remotion-studio' build 2>&1 | tail -15
+
+  - id: check_no_preset_regressions
+    depends_on: [run_build]
+    bash: |
+      set -e
+      echo "## Repo-wide preset-vocabulary residual scan"
+      echo ""
+      # Re-run the Task 0 guard test from the python suite.
+      cd project/py
+      .venv/bin/pytest -q -k test_preset_vocabulary_guard 2>&1 | tail -10
+      cd ../..
+      echo ""
+      # Belt-and-braces: shell-level scan that does not depend on the
+      # python guard implementation. Excludes vault/, .agent/, .archon/,
+      # dist/, node_modules/, .venv/, __pycache__/.
+      MATCHES=$(find . \
+        -path './.git' -prune -o \
+        -path './vault' -prune -o \
+        -path './.agent' -prune -o \
+        -path './.archon' -prune -o \
+        -path '*/dist' -prune -o \
+        -path '*/node_modules' -prune -o \
+        -path '*/.venv' -prune -o \
+        -path '*/__pycache__' -prune -o \
+        -path '*/.claude' -prune -o \
+        -type f \( -name '*.py' -o -name '*.ts' -o -name '*.tsx' -o -name '*.json' -o -name '*.yaml' -o -name '*.yml' \) \
+        -print 2>/dev/null \
+        | xargs grep -l -E 'preset:|slot_bbox|slot_weight|_LEFT_RIGHT_WEIGHT|_TOP_BOTTOM_WEIGHT|_ENCLOSE_PADDING|_REPEAT_TRIANGLE_SCALE' 2>/dev/null \
+        | grep -v 'test_extraction_plan_shape.py' \
+        | grep -v 'test_preset_vocabulary_guard.py' \
+        | grep -v 'plan-14' || true)
+      if [ -n "$MATCHES" ]; then
+        echo "FOUND preset residuals:"
+        echo "$MATCHES"
+        echo ""
+        echo "VERDICT: REJECTED"
+        exit 1
+      fi
+      echo "(repo-wide scan clean)"
+      echo "VERDICT: clean"
+
+  - id: check_trace_ledger
+    depends_on: [check_no_preset_regressions]
+    bash: |
+      set -e
+      LEDGER=vault/references/plan-14-trace.md
+      if [ ! -f "$LEDGER" ]; then
+        echo "VERDICT: REJECTED — trace ledger missing"
+        exit 1
+      fi
+      # One row per task at minimum (Task 0..12 = 13 rows).
+      # Task 11 contributes 3 rows so the floor is 15, header excluded.
+      ROW_COUNT=$(grep -cE '^\| (0|[1-9]|1[0-2]) \|' "$LEDGER" || echo 0)
+      echo "trace rows recorded: $ROW_COUNT"
+      if [ "$ROW_COUNT" -lt 13 ]; then
+        echo "VERDICT: REJECTED — fewer than 13 task rows in ledger"
+        exit 1
+      fi
+      echo ""
+      echo "## Trace ledger tail"
+      tail -25 "$LEDGER"
+      echo ""
+      echo "## Kimi verdict transcripts present"
+      ls -l vault/references/plan-14-kimi-verdicts/ 2>&1 | tail -20
+
+  - id: check_demo_char_verified
+    depends_on: [check_trace_ledger]
+    bash: |
+      set -e
+      # Task 11 records the demo char in a metric line; pull it out.
+      LEDGER=vault/references/plan-14-trace.md
+      DEMO_CHAR=$(grep -E '^\| 11 \|.*demo_char' "$LEDGER" \
+                  | head -1 \
+                  | awk -F '|' '{print $5}' \
+                  | tr -d ' ' || true)
+      if [ -z "$DEMO_CHAR" ]; then
+        echo "VERDICT: REJECTED — no demo_char recorded for Task 11"
+        exit 1
+      fi
+      echo "Task 11 demo char: $DEMO_CHAR"
+      cd project/py
+      STATUS_OUT=$(.venv/bin/olik extract list --status verified --limit 9999 2>/dev/null \
+                   | grep -F "$DEMO_CHAR" || true)
+      if [ -z "$STATUS_OUT" ]; then
+        echo "VERDICT: REJECTED — demo char $DEMO_CHAR did not flip to verified"
+        exit 1
+      fi
+      echo "demo char $DEMO_CHAR is in verified status"
+      echo "VERDICT: clean"
+
+  - id: approve
+    depends_on: [check_demo_char_verified]
+    bash: |
+      set -e
+      echo "## Plan 14 run summary"
+      echo ""
+      echo "### Commits"
+      git log --oneline main..HEAD
+      echo ""
+      echo "### Tag"
+      git tag -l "plan-14-authored-decomp-and-prototype-graph"
+      echo ""
+      echo "### Final py test tail"
+      echo "$run_py.output" | tail -8
+      echo ""
+      echo "### Final ts test tail"
+      echo "$run_ts.output" | tail -10
+      echo ""
+
+      py_ok=0; ts_ok=0; tc_ok=0; bd_ok=0; tag_ok=0; trace_ok=0; demo_ok=0; preset_ok=0
+
+      if echo "$run_py.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_py.output" | grep -qE '[1-9][0-9]* failed'; then
+        py_ok=1
+      fi
+      if echo "$run_ts.output" | grep -qE '[0-9]+ passed' && \
+         ! echo "$run_ts.output" | grep -qE '[1-9][0-9]* failed'; then
+        ts_ok=1
+      fi
+      if echo "$run_typecheck.output" | grep -qiE 'error'; then
+        tc_ok=0
+      else
+        tc_ok=1
+      fi
+      if echo "$run_build.output" | grep -qiE 'error|failed'; then
+        bd_ok=0
+      else
+        bd_ok=1
+      fi
+      if git tag -l "plan-14-authored-decomp-and-prototype-graph" \
+             | grep -q plan-14; then
+        tag_ok=1
+      fi
+      if echo "$check_trace_ledger.output" | grep -q 'trace rows recorded' && \
+         ! echo "$check_trace_ledger.output" | grep -q 'REJECTED'; then
+        trace_ok=1
+      fi
+      if echo "$check_demo_char_verified.output" | grep -q 'is in verified status'; then
+        demo_ok=1
+      fi
+      if echo "$check_no_preset_regressions.output" | grep -q 'VERDICT: clean'; then
+        preset_ok=1
+      fi
+
+      if [ $py_ok -eq 1 ] && [ $ts_ok -eq 1 ] && [ $tc_ok -eq 1 ] && \
+         [ $bd_ok -eq 1 ] && [ $tag_ok -eq 1 ] && [ $trace_ok -eq 1 ] && \
+         [ $demo_ok -eq 1 ] && [ $preset_ok -eq 1 ]; then
+        echo "VERDICT: AUTO-APPROVED"
+      else
+        echo "VERDICT: REJECTED (py=$py_ok ts=$ts_ok tc=$tc_ok build=$bd_ok tag=$tag_ok trace=$trace_ok demo=$demo_ok preset=$preset_ok)"
+        exit 1
+      fi
+
+  - id: create_pr
+    depends_on: [approve]
+    prompt: |
+      Push the current branch to `origin` and open a pull request against
+      `main`. Use `gh pr create`.
+
+      ## SAFETY: body must go to a temp file
+
+      Same protocol as Plan 11. Do NOT inline `--body` with a heredoc;
+      write the body to `/tmp/pr-body-plan-14.md` first, then pass
+      `--body-file`. Markdown code blocks containing backticks have
+      caused prior workflows to shell-interpolate and run destructive
+      commands against the host SurrealDB.
+
+      ## Title
+
+      `Plan 14: Authored decomposition layer + prototype graph`
+
+      ## Body content (write verbatim into the temp file)
+
+      - One-line summary: realises the day-one design (authored override
+        layer for per-glyph decomposition; MMH demoted to peer source;
+        prototype graph extended with `decomposes_into`/`appears_in`/
+        `has_kangxi` edges and `role`/`etymology`/`productive_count`
+        attributes; new inspector PrototypeBrowser view; authoring panel
+        in DecompositionExplorer).
+      - Geometry rule unchanged; Task 0 adds repo-wide guard.
+      - Commit list: output of `git log --oneline main..HEAD`.
+      - Python + TS test counts (tail of run_py / run_ts).
+      - Preset residual scan: output of `check_no_preset_regressions`.
+      - Trace ledger summary: output of `check_trace_ledger` tail.
+      - Demo char: output of `check_demo_char_verified`.
+      - Kimi verdict transcripts: list of files in
+        `vault/references/plan-14-kimi-verdicts/`.
+      - Tag: `plan-14-authored-decomp-and-prototype-graph`.
+      - **Visual verification (post-merge, reviewer action):** the
+        operator opens the inspector for the demo char, confirms the
+        DecompositionExplorer shows the authored partition, and opens
+        `/proto/u6708` (or any other commonly-used prototype) to
+        confirm PrototypeBrowser renders.
+      - Links:
+        - Spec:   `vault/specs/2026-04-23-authored-decomp-and-prototype-graph-design.md`
+        - Plan:   `vault/plans/2026-04-23-14-authored-decomp-and-prototype-graph.md`
+        - Skill:  `.agent/skills/05-engine/glyph-geometry/SKILL.md`
+        - Trace:  `vault/references/plan-14-trace.md`
+        - Verdicts: `vault/references/plan-14-kimi-verdicts/`
+        - Predecessor: Plan 11 (preset-vocabulary deletion).
+
+      ## Output
+
+      After `gh pr create` succeeds, output the final PR URL on the last
+      line of your response.
+    idle_timeout: 300000
