@@ -13,7 +13,7 @@ from typing import Any
 from olik_font.bulk import variant_match
 from olik_font.bulk.charlist import load_moe_4808, select_buckets
 from olik_font.bulk.planner import PlanFailed, PlanUnsupported, plan_char
-from olik_font.bulk.reuse import ProtoIndex, VariantCap
+from olik_font.bulk.reuse import ProtoIndex, VariantCap, name_to_slug
 from olik_font.bulk.status import Status
 from olik_font.bulk.variant_caps import load_variant_caps
 from olik_font.compose.walk import compose_transforms
@@ -25,12 +25,19 @@ from olik_font.prototypes.extraction_plan import ExtractionPlan, PrototypePlan
 from olik_font.sink.surrealdb import (
     upsert_glyph,
     upsert_glyph_stub,
+    upsert_has_kangxi,
     upsert_prototype,
     upsert_variant_of_edge,
 )
 from olik_font.sources.cjk_decomp import load_cjk_entries, load_cjk_overrides
 from olik_font.sources.makemeahanzi import (
     MmhChar,
+)
+from olik_font.sources.makemeahanzi import (
+    etymology as mmh_etymology,
+)
+from olik_font.sources.makemeahanzi import (
+    radical as mmh_radical,
 )
 from olik_font.sources.unified import load_unified_lookup
 from olik_font.types import BBox, PrototypeLibrary
@@ -211,10 +218,19 @@ def _counting_probe(
     return probe
 
 
-def _db_record(char: str, record: dict[str, Any], iou: float, run_id: str) -> dict[str, Any]:
+def _db_record(
+    char: str,
+    record: dict[str, Any],
+    iou: float,
+    run_id: str,
+    radical: str | None,
+    glyph_etymology: str | None,
+) -> dict[str, Any]:
     return {
         "char": char,
         "stroke_count": len(record.get("stroke_instances", [])),
+        "radical": radical,
+        "etymology": glyph_etymology,
         "iou_mean": iou,
         "iou_report": record.get("metadata", {}).get("iou_report", {}),
         **record,
@@ -274,6 +290,19 @@ def run_batch(
     probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
 
     for ch in buckets:
+        radical = mmh_radical(ch, dictionary=lookup.mmh_dictionary)
+        glyph_etymology = mmh_etymology(ch, dictionary=lookup.mmh_dictionary)
+        if not dry_run and run_id is not None and radical is not None:
+            kangxi_id = _kangxi_proto_id(radical)
+            upsert_prototype(
+                db,
+                {
+                    "id": kangxi_id,
+                    "name": radical,
+                    "source": "mmh:kangxi",
+                },
+            )
+
         entry = cjk.get(ch)
         if entry is None:
             if not dry_run and run_id is not None:
@@ -283,7 +312,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error="cjk-decomp entry missing",
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -329,7 +362,11 @@ def run_batch(
                     Status.UNSUPPORTED_OP.value,
                     missing_op=result.missing_op,
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.UNSUPPORTED_OP)
             continue
 
@@ -341,7 +378,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error=result.reason,
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -387,7 +428,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error=f"{type(exc).__name__}: {exc}",
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -412,9 +457,11 @@ def run_batch(
             for variant_id, canonical_id in result.variant_edges:
                 upsert_variant_of_edge(db, variant_id, canonical_id)
 
-            db_record = _db_record(ch, record, iou, run_id)
+            db_record = _db_record(ch, record, iou, run_id, radical, glyph_etymology)
             db_record["status"] = status.value
             upsert_glyph(db, db_record)
+            if radical is not None:
+                upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
 
         index = ProtoIndex(prototypes=[*index.prototypes, *result.new_prototypes])
         probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
@@ -423,3 +470,7 @@ def run_batch(
         _finalize_extraction_run(db, run_id, report)
 
     return report
+
+
+def _kangxi_proto_id(radical: str) -> str:
+    return f"proto:kangxi_{name_to_slug(radical)}"

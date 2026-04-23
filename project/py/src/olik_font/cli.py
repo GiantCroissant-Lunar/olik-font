@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from olik_font.bulk.reuse import name_to_slug
 from olik_font.compose.walk import compose_transforms
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.emit.library import library_to_dict
@@ -19,7 +20,17 @@ from olik_font.emit.trace import trace_to_dict
 from olik_font.prototypes.extract import extract_all_prototypes
 from olik_font.prototypes.extraction_plan import load_extraction_plan
 from olik_font.rules.engine import RuleSet, apply_first_match, load_rules
-from olik_font.sources.makemeahanzi import fetch_mmh, load_mmh_dictionary, load_mmh_graphics
+from olik_font.sources.makemeahanzi import (
+    etymology as mmh_etymology,
+)
+from olik_font.sources.makemeahanzi import (
+    fetch_mmh,
+    load_mmh_dictionary,
+    load_mmh_graphics,
+)
+from olik_font.sources.makemeahanzi import (
+    radical as mmh_radical,
+)
 from olik_font.sources.unified import load_unified_lookup
 from olik_font.styling import ComfyUIClient, stylize
 from olik_font.types import PrototypeLibrary
@@ -214,6 +225,7 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
     from olik_font.sink.schema import ensure_schema
     from olik_font.sink.surrealdb import (
         upsert_glyph,
+        upsert_has_kangxi,
         upsert_prototype,
         upsert_rule_trace,
         upsert_rules,
@@ -238,8 +250,21 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
     upsert_rules(db, _rules_catalog(rule_set))
 
     for ch, rec in records.items():
-        radical = mmh_dict.get(ch).radical if ch in mmh_dict else None
-        upsert_glyph(db, _db_record(ch, rec, radical))
+        radical = mmh_radical(ch, dictionary=mmh_dict)
+        glyph_etymology = mmh_etymology(ch, dictionary=mmh_dict)
+        if radical is not None:
+            kangxi_id = _kangxi_proto_id(radical)
+            upsert_prototype(
+                db,
+                {
+                    "id": kangxi_id,
+                    "name": radical,
+                    "source": "mmh:kangxi",
+                },
+            )
+        upsert_glyph(db, _db_record(ch, rec, radical, glyph_etymology))
+        if radical is not None:
+            upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
         upsert_rule_trace(db, ch, _db_trace(traces[ch]))
 
     db.query(
@@ -606,12 +631,18 @@ def _rule_resolution(action: dict[str, Any]) -> str:
     return json.dumps(action, ensure_ascii=False, sort_keys=True)
 
 
-def _db_record(char: str, record: dict[str, Any], radical: str | None) -> dict[str, Any]:
+def _db_record(
+    char: str,
+    record: dict[str, Any],
+    radical: str | None,
+    glyph_etymology: str | None,
+) -> dict[str, Any]:
     iou_report = record.get("metadata", {}).get("iou_report", {})
     return {
         "char": char,
         "stroke_count": len(record.get("stroke_instances", [])),
         "radical": radical,
+        "etymology": glyph_etymology,
         "iou_mean": float(iou_report.get("mean", 0.0)),
         "iou_report": iou_report,
         **record,
@@ -651,6 +682,10 @@ def _olik_version() -> str:
         return version("olik-font")
     except Exception:
         return "unknown"
+
+
+def _kangxi_proto_id(radical: str) -> str:
+    return f"proto:kangxi_{name_to_slug(radical)}"
 
 
 def main() -> int:

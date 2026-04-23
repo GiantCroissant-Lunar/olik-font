@@ -46,6 +46,8 @@ workflow.
 | 2 | pending | 4seed_iou_min | 0.9090868680424999 | n/a | 2026-04-23T02:13:58Z |
 | 3 | pending | mode_dispatch_tests_passed | 3/3 | n/a | 2026-04-23T02:26:31Z |
 | 4 | pending | new_tables_in_schema | 3 | n/a | 2026-04-23T02:34:22Z |
+| 5 | pending | has_kangxi_edges_in_sample | 99 | n/a | 2026-04-23T02:45:49Z |
+| 5 | pending | glyphs_with_etymology_in_sample | 97 | n/a | 2026-04-23T02:45:49Z |
 
 ## Cross-reference
 

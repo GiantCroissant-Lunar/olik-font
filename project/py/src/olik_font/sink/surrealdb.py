@@ -177,6 +177,8 @@ def upsert_glyph_stub(
     missing_op: str | None = None,
     extraction_error: str | None = None,
     extraction_run: str | None = None,
+    radical: str | None = None,
+    etymology: str | None = None,
 ) -> None:
     """Insert-or-update a bucket row with no stroke data — used for
     `unsupported_op` and `failed_extraction` outcomes so every bucket
@@ -189,6 +191,10 @@ def upsert_glyph_stub(
         body["extraction_error"] = extraction_error
     if extraction_run is not None:
         body["extraction_run"] = extraction_run
+    if radical is not None:
+        body["radical"] = radical
+    if etymology is not None:
+        body["etymology"] = etymology
     db.query(
         "UPSERT type::record('glyph', $char) MERGE $data;",
         {"char": char, "data": body},

@@ -11,8 +11,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import requests
+
+EtymologyType = Literal["pictographic", "ideographic", "pictophonetic"]
+
+_PY_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +35,7 @@ class MmhDictEntry:
     pinyin: list[str] = field(default_factory=list)
     decomposition: str | None = None
     radical: str | None = None
+    etymology: EtymologyType | None = None
     matches: list[list[int] | None] = field(default_factory=list)
 
 
@@ -69,9 +76,51 @@ def load_mmh_dictionary(path: Path) -> dict[str, MmhDictEntry]:
                 pinyin=list(obj.get("pinyin", [])),
                 decomposition=obj.get("decomposition"),
                 radical=obj.get("radical"),
+                etymology=_parse_etymology_type(obj.get("etymology")),
                 matches=list(obj.get("matches", [])),
             )
     return out
+
+
+def _parse_etymology_type(raw: object) -> EtymologyType | None:
+    if not isinstance(raw, dict):
+        return None
+    etymology_type = raw.get("type")
+    if etymology_type in {"pictographic", "ideographic", "pictophonetic"}:
+        return etymology_type
+    return None
+
+
+def radical(
+    char: str,
+    *,
+    mmh_dir: Path = DEFAULT_MMH_DIR,
+    dictionary: dict[str, MmhDictEntry] | None = None,
+) -> str | None:
+    entry = _dictionary_entry(char, mmh_dir=mmh_dir, dictionary=dictionary)
+    return entry.radical if entry is not None else None
+
+
+def etymology(
+    char: str,
+    *,
+    mmh_dir: Path = DEFAULT_MMH_DIR,
+    dictionary: dict[str, MmhDictEntry] | None = None,
+) -> EtymologyType | None:
+    entry = _dictionary_entry(char, mmh_dir=mmh_dir, dictionary=dictionary)
+    return entry.etymology if entry is not None else None
+
+
+def _dictionary_entry(
+    char: str,
+    *,
+    mmh_dir: Path,
+    dictionary: dict[str, MmhDictEntry] | None,
+) -> MmhDictEntry | None:
+    if dictionary is None:
+        _, dictionary_path = fetch_mmh(mmh_dir)
+        dictionary = load_mmh_dictionary(dictionary_path)
+    return dictionary.get(char)
 
 
 MMH_GRAPHICS_URL = "https://raw.githubusercontent.com/skishore/makemeahanzi/master/graphics.txt"
