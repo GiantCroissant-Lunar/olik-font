@@ -4,6 +4,11 @@ import { ReactFlow, type Edge, type Node } from "@xyflow/react";
 import { DecompNode, NODE_TYPE_KEYS } from "@olik/flow-nodes";
 import type { LayoutNode } from "@olik/glyph-schema";
 import { useAppState } from "../state.js";
+import {
+  AuthoringPanel,
+  createAuthoringDocument,
+  type AuthoringNode,
+} from "./AuthoringPanel.js";
 
 type ExplorerNodeTone = "leaf" | "measured" | "refine" | "replaced";
 
@@ -26,6 +31,22 @@ const SOURCE_BADGES = new Set(["authored", "animcjk", "mmh", "cjk-decomp"]);
 export const DecompositionExplorer: React.FC = () => {
   const [state] = useAppState();
   const record = state.records[state.char];
+  const [authoringDocument, setAuthoringDocument] = React.useState(() =>
+    record?.layout_tree ? createAuthoringDocument(record) : null,
+  );
+  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(
+    record?.layout_tree?.id ?? null,
+  );
+
+  React.useEffect(() => {
+    if (!record?.layout_tree) {
+      setAuthoringDocument(null);
+      setSelectedNodeId(null);
+      return;
+    }
+    setAuthoringDocument(createAuthoringDocument(record));
+    setSelectedNodeId(record.layout_tree.id);
+  }, [record]);
 
   if (!record) {
     return <div style={{ padding: 24 }}>no record for {state.char}</div>;
@@ -35,35 +56,49 @@ export const DecompositionExplorer: React.FC = () => {
     return <div style={{ padding: 24 }}>no layout tree for {state.char}</div>;
   }
 
-  const { nodes, edges } = layoutTreeToFlow(record.layout_tree, record.glyph_id);
+  if (!authoringDocument) {
+    return <div style={{ padding: 24 }}>preparing authoring state…</div>;
+  }
+
+  const { nodes, edges } = layoutTreeToFlow(authoringDocument.root, record.glyph_id, selectedNodeId);
 
   return (
     <div
       data-testid="decomposition-explorer"
       style={{
         height: "calc(100vh - 160px)",
+        display: "flex",
         background:
           "radial-gradient(circle at top, rgba(14,165,233,0.08), transparent 40%), #f8fafc",
       }}
     >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        minZoom={0.2}
-        defaultEdgeOptions={{ style: { stroke: EDGE_COLOR, strokeWidth: 1.5 } }}
+      <div style={{ flex: 1 }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          nodesDraggable={false}
+          nodesConnectable={false}
+          minZoom={0.2}
+          defaultEdgeOptions={{ style: { stroke: EDGE_COLOR, strokeWidth: 1.5 } }}
+          onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+        />
+      </div>
+      <AuthoringPanel
+        document={authoringDocument}
+        library={state.library}
+        selectedNodeId={selectedNodeId}
+        onDocumentChange={setAuthoringDocument}
       />
     </div>
   );
 };
 
 export function layoutTreeToFlow(
-  root: LayoutNode,
+  root: LayoutNode | AuthoringNode,
   rootChar: string,
+  selectedNodeId?: string | null,
 ): { nodes: Node<ExplorerNodeData>[]; edges: Edge[] } {
   const graph = new dagre.graphlib.Graph();
   graph.setGraph({
@@ -75,10 +110,10 @@ export function layoutTreeToFlow(
   });
   graph.setDefaultEdgeLabel(() => ({}));
 
-  const entries: Array<{ node: LayoutNode; parentId: string | null }> = [];
+  const entries: Array<{ node: LayoutNode | AuthoringNode; parentId: string | null }> = [];
   const edges: Edge[] = [];
 
-  (function visit(node: LayoutNode, parentId: string | null) {
+  (function visit(node: LayoutNode | AuthoringNode, parentId: string | null) {
     entries.push({ node, parentId });
     graph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
     if (parentId) {
@@ -112,22 +147,23 @@ export function layoutTreeToFlow(
         sourceBadge: sourceBadgeForNode(node),
         tone: toneForNode(node),
       },
+      selected: node.id === selectedNodeId,
     } satisfies Node<ExplorerNodeData>;
   });
 
   return { nodes, edges };
 }
 
-function labelForNode(node: LayoutNode): string {
+function labelForNode(node: LayoutNode | AuthoringNode): string {
   return node.prototype_ref?.replace("proto:", "") ?? node.id;
 }
 
-function operatorForNode(node: LayoutNode): string | null {
+function operatorForNode(node: LayoutNode | AuthoringNode): string | null {
   const source = node.decomp_source as { operator?: string | null } | undefined;
   return source?.operator ?? null;
 }
 
-function sourceBadgeForNode(node: LayoutNode): string | null {
+function sourceBadgeForNode(node: LayoutNode | AuthoringNode): string | null {
   const source = node.decomp_source as
     | { source?: string | null; adapter?: string | null }
     | undefined;
@@ -135,7 +171,7 @@ function sourceBadgeForNode(node: LayoutNode): string | null {
   return candidate && SOURCE_BADGES.has(candidate) ? candidate : null;
 }
 
-function toneForNode(node: LayoutNode): ExplorerNodeTone {
+function toneForNode(node: LayoutNode | AuthoringNode): ExplorerNodeTone {
   if (node.mode === "replace" || node.input_adapter === "replaced") {
     return "replaced";
   }

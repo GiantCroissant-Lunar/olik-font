@@ -11,7 +11,7 @@ const TONE_STYLES = {
   replaced: { border: "#a855f7", background: "#faf5ff", chip: "#7e22ce" },
 } as const;
 
-export const DecompNode: React.FC<NodeProps<DecompFlowNode>> = ({ data }) => {
+export const DecompNode: React.FC<NodeProps<DecompFlowNode>> = ({ data, selected }) => {
   const tone = data.tone ?? "measured";
   const style = TONE_STYLES[tone];
 
@@ -25,7 +25,9 @@ export const DecompNode: React.FC<NodeProps<DecompFlowNode>> = ({ data }) => {
         borderRadius: 10,
         width: 180,
         fontFamily: "system-ui, sans-serif",
-        boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+        boxShadow: selected
+          ? "0 0 0 3px rgba(15, 23, 42, 0.12), 0 16px 32px rgba(15, 23, 42, 0.16)"
+          : "0 10px 24px rgba(15, 23, 42, 0.08)",
       }}
     >
       <Handle type="target" position={Position.Top} />
