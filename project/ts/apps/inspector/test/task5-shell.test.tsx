@@ -11,6 +11,12 @@ class ResizeObserverMock {
 vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 
 vi.mock("@olik/glyph-loader", () => ({
+  loadPrototypeBrowserDataUrl: vi.fn(async () => ({
+    focus: { id: "u6708", label: "月", kind: "focus", role: "meaning", etymology: "pictographic", productive_count: 37 },
+    nodes: [],
+    edges: [],
+    appearsIn: [],
+  })),
   loadPrototypeLibraryUrl: vi.fn(async () => ({
     prototypes: {},
     prototypes_by_name: {},
@@ -43,7 +49,7 @@ describe("Task 5 shell", () => {
       expect(screen.getByRole("button", { name: "Decomposition Explorer" })).toBeTruthy();
     });
 
-    expect(screen.getByRole("button", { name: "Prototype Library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Prototype Browser" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rule Browser" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Placement Debugger" })).toBeTruthy();
 

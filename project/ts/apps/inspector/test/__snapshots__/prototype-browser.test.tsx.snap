@@ -1,0 +1,77 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`PrototypeBrowser > lays out 月 graph snapshot 1`] = `
+{
+  "edges": [
+    {
+      "label": "variant_of",
+      "source": "u80c9",
+      "target": "u6708",
+    },
+    {
+      "label": "variant_of",
+      "source": "u80c9",
+      "target": "u6708_qing",
+    },
+    {
+      "label": "decomposes_into",
+      "source": "u6708",
+      "target": "u6708_left_stem",
+    },
+    {
+      "label": "decomposes_into",
+      "source": "u6708",
+      "target": "u6708_inner_bar",
+    },
+    {
+      "label": "decomposes_into",
+      "source": "u6708",
+      "target": "u6708_curve",
+    },
+  ],
+  "nodes": [
+    {
+      "id": "u6708",
+      "kind": "focus",
+      "label": "月",
+      "x": 450,
+      "y": 302,
+    },
+    {
+      "id": "u80c9",
+      "kind": "variant-parent",
+      "label": "肉",
+      "x": 381,
+      "y": 102,
+    },
+    {
+      "id": "u6708_qing",
+      "kind": "variant-sibling",
+      "label": "月(清)",
+      "x": 576,
+      "y": 100,
+    },
+    {
+      "id": "u6708_left_stem",
+      "kind": "child",
+      "label": "left stem",
+      "x": 294,
+      "y": 479,
+    },
+    {
+      "id": "u6708_inner_bar",
+      "kind": "child",
+      "label": "inner bar",
+      "x": 449,
+      "y": 512,
+    },
+    {
+      "id": "u6708_curve",
+      "kind": "child",
+      "label": "outer curve",
+      "x": 605,
+      "y": 480,
+    },
+  ],
+}
+`;

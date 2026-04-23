@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.1",
+  "focus": {
+    "id": "u6708",
+    "label": "月",
+    "kind": "focus",
+    "role": "meaning",
+    "etymology": "pictographic",
+    "productive_count": 37
+  },
+  "nodes": [
+    {
+      "id": "u6708",
+      "label": "月",
+      "kind": "focus",
+      "role": "meaning",
+      "etymology": "pictographic",
+      "productive_count": 37
+    },
+    {
+      "id": "u80c9",
+      "label": "肉",
+      "kind": "variant-parent",
+      "role": "meaning",
+      "etymology": "pictographic",
+      "productive_count": 44
+    },
+    {
+      "id": "u6708_qing",
+      "label": "月(清)",
+      "kind": "variant-sibling",
+      "role": "meaning",
+      "etymology": "pictographic",
+      "productive_count": 8
+    },
+    {
+      "id": "u6708_left_stem",
+      "label": "left stem",
+      "kind": "child"
+    },
+    {
+      "id": "u6708_inner_bar",
+      "label": "inner bar",
+      "kind": "child"
+    },
+    {
+      "id": "u6708_curve",
+      "label": "outer curve",
+      "kind": "child"
+    }
+  ],
+  "edges": [
+    {
+      "id": "u80c9->u6708",
+      "source": "u80c9",
+      "target": "u6708",
+      "relation": "variant_of"
+    },
+    {
+      "id": "u80c9->u6708_qing",
+      "source": "u80c9",
+      "target": "u6708_qing",
+      "relation": "variant_of"
+    },
+    {
+      "id": "u6708->u6708_left_stem",
+      "source": "u6708",
+      "target": "u6708_left_stem",
+      "relation": "decomposes_into"
+    },
+    {
+      "id": "u6708->u6708_inner_bar",
+      "source": "u6708",
+      "target": "u6708_inner_bar",
+      "relation": "decomposes_into"
+    },
+    {
+      "id": "u6708->u6708_curve",
+      "source": "u6708",
+      "target": "u6708_curve",
+      "relation": "decomposes_into"
+    }
+  ],
+  "appears_in": [
+    {
+      "char": "明",
+      "productive_count": 37
+    },
+    {
+      "char": "朋",
+      "productive_count": 19
+    },
+    {
+      "char": "朝",
+      "productive_count": 16
+    },
+    {
+      "char": "期",
+      "productive_count": 15
+    },
+    {
+      "char": "有",
+      "productive_count": 9
+    }
+  ]
+}

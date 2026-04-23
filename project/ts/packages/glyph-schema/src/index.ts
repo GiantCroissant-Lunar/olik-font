@@ -4,6 +4,7 @@ export * from "./coord-space.js";
 export * from "./affine.js";
 export * from "./prototype.js";
 export * from "./prototype-library.js";
+export * from "./proto-graph.js";
 export * from "./authored-decomp.js";
 export * from "./constraint.js";
 export * from "./layout-tree.js";

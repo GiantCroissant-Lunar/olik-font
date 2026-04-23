@@ -51,6 +51,7 @@ workflow.
 | 6 | pending | top10_overlap_with_hanzicraft | 0/10 | n/a | 2026-04-23T02:55:48Z |
 | 7 | pending | kimi_pass_count_of_4 | 4 | plan-14-kimi-verdicts/task-07-decomp-explorer.md | 2026-04-23T03:18:50Z |
 | 8 | pending | authored_file_validates | true | n/a | 2026-04-23T03:33:33Z |
+| 9 | pending | kimi_verdict | pass | plan-14-kimi-verdicts/task-09-proto-browser.md | 2026-04-23T03:46:55Z |
 
 ## Cross-reference
 
