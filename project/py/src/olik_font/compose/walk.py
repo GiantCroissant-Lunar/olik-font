@@ -86,10 +86,10 @@ def _resolve_transform(
     if node.transform is not None:
         return node.transform
 
-    if node.source_stroke_indices:
+    if node.mode in {"keep", "replace"} and node.source_stroke_indices:
         return measure_instance_transform(_stroke_paths(root_char, node.source_stroke_indices))
 
-    if children:
+    if node.mode == "refine" and children:
         return bbox_to_bbox_affine(
             CANONICAL,
             union_bbox(tuple(_placed_bbox(child.transform) for child in children)),

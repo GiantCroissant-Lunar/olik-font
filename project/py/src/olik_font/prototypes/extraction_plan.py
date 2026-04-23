@@ -32,6 +32,7 @@ class GlyphNodePlan:
     mode: Mode = "keep"
     source_stroke_indices: tuple[int, ...] | None = None
     children: tuple[GlyphNodePlan, ...] = ()
+    replacement_proto_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,7 @@ def _parse_node(obj: dict) -> GlyphNodePlan:
         source_stroke_indices=(
             tuple(obj["source_stroke_indices"]) if "source_stroke_indices" in obj else None
         ),
+        replacement_proto_ref=obj.get("replacement_proto_ref"),
         children=tuple(_parse_node(c) for c in obj.get("children", [])),
     )
 

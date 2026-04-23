@@ -392,6 +392,7 @@ def plan_char(
                         prototype_ref=node.prototype_ref,
                         mode=node.mode,
                         source_stroke_indices=partition_indices,
+                        replacement_proto_ref=node.replacement_proto_ref,
                     )
                 )
                 continue

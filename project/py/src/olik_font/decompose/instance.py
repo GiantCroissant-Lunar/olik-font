@@ -78,16 +78,27 @@ def _build_node(
             for c in node.children
         )
 
+    prototype_ref = node.prototype_ref
+    if node.mode == "replace":
+        if node.replacement_proto_ref is None:
+            raise ValueError(f"{prototype_ref}: replace mode requires replacement_proto_ref")
+        prototype_ref = node.replacement_proto_ref
+
     source_stroke_indices = node.source_stroke_indices
     if source_stroke_indices is None:
         prototype = by_prototype_id.get(node.prototype_ref)
         if prototype is not None and prototype.from_char == root_char:
             source_stroke_indices = prototype.stroke_indices
 
-    input_adapter = "refine" if node.children else ("measured" if source_stroke_indices else "leaf")
+    if node.mode == "refine":
+        input_adapter = "refine"
+    elif node.mode == "replace":
+        input_adapter = "replaced"
+    else:
+        input_adapter = "measured" if source_stroke_indices else "leaf"
     return InstancePlacement(
-        instance_id=_fresh_id(node.prototype_ref.replace("proto:", ""), state),
-        prototype_ref=node.prototype_ref,
+        instance_id=_fresh_id(prototype_ref.replace("proto:", ""), state),
+        prototype_ref=prototype_ref,
         transform=None,
         source_stroke_indices=source_stroke_indices,
         mode=node.mode,
