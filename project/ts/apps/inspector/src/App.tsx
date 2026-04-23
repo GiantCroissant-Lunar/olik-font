@@ -3,7 +3,7 @@ import { AppStateProvider, useAppState } from "./state.js";
 import { TopNav } from "./ui/TopNav.js";
 import { CharPicker } from "./ui/CharPicker.js";
 import { DecompositionExplorer } from "./views/DecompositionExplorer.js";
-import { PrototypeLibraryBrowser } from "./views/PrototypeLibraryBrowser.js";
+import { PrototypeBrowser } from "./views/PrototypeBrowser.js";
 import { RuleBrowser } from "./views/RuleBrowser.js";
 import { PlacementDebugger } from "./views/PlacementDebugger.js";
 
@@ -22,9 +22,9 @@ const Body: React.FC = () => {
 
   return (
     <div>
-      <CharPicker />
+      {state.view !== "prototype" ? <CharPicker /> : null}
       {state.view === "decomposition" ? <DecompositionExplorer /> : null}
-      {state.view === "library" ? <PrototypeLibraryBrowser /> : null}
+      {state.view === "prototype" ? <PrototypeBrowser /> : null}
       {state.view === "rules" ? <RuleBrowser /> : null}
       {state.view === "placement" ? <PlacementDebugger /> : null}
     </div>

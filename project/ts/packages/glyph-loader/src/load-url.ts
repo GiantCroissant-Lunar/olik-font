@@ -26,3 +26,5 @@ export async function loadPrototypeLibraryUrl(url: string | URL): Promise<Protot
 export async function loadRuleTraceUrl(url: string | URL): Promise<RuleTraceT> {
   return RuleTrace.parse(await fetchJson(url));
 }
+
+export * from "./proto-graph.js";

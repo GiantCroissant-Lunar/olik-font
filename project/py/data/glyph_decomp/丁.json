@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1",
+  "char": "丁",
+  "supersedes": "mmh",
+  "rationale": "MMH provides strokes for 丁 but no usable partition, so author the two visible stroke components directly.",
+  "authored_by": "codex",
+  "authored_at": "2026-04-23T02:10:00Z",
+  "partition": [
+    {
+      "prototype_ref": "proto:ding_top_stroke",
+      "mode": "keep",
+      "source_stroke_indices": [
+        0
+      ],
+      "children": []
+    },
+    {
+      "prototype_ref": "proto:ding_hook_stroke",
+      "mode": "keep",
+      "source_stroke_indices": [
+        1
+      ],
+      "children": []
+    }
+  ]
+}

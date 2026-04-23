@@ -136,6 +136,7 @@ def load_animcjk_dictionary(path: Path) -> dict[str, MmhDictEntry]:
                 pinyin=list(obj.get("pinyin", [])),
                 decomposition=obj.get("decomposition"),
                 radical=obj.get("radical"),
+                etymology=None,
                 matches=matches,
             )
     return out

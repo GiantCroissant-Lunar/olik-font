@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from olik_font.bulk.reuse import name_to_slug
 from olik_font.compose.walk import compose_transforms
 from olik_font.decompose.instance import build_instance_tree
 from olik_font.emit.library import library_to_dict
@@ -19,12 +20,24 @@ from olik_font.emit.trace import trace_to_dict
 from olik_font.prototypes.extract import extract_all_prototypes
 from olik_font.prototypes.extraction_plan import load_extraction_plan
 from olik_font.rules.engine import RuleSet, apply_first_match, load_rules
-from olik_font.sources.makemeahanzi import fetch_mmh, load_mmh_dictionary, load_mmh_graphics
+from olik_font.sources.makemeahanzi import (
+    etymology as mmh_etymology,
+)
+from olik_font.sources.makemeahanzi import (
+    fetch_mmh,
+    load_mmh_dictionary,
+    load_mmh_graphics,
+)
+from olik_font.sources.makemeahanzi import (
+    radical as mmh_radical,
+)
+from olik_font.sources.unified import load_unified_lookup
 from olik_font.styling import ComfyUIClient, stylize
 from olik_font.types import PrototypeLibrary
 
 _PY_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MMH_DIR = _PY_ROOT / "data" / "mmh"
+_DEFAULT_ANIMCJK_DIR = _PY_ROOT / "data" / "animcjk"
 _DEFAULT_PLAN = _PY_ROOT / "data" / "extraction_plan.yaml"
 _DEFAULT_RULES = _PY_ROOT / "src" / "olik_font" / "rules" / "rules.yaml"
 
@@ -59,6 +72,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     db_export = db_sub.add_parser("export", help="dump DB back to JSON")
     db_export.add_argument("--out", required=True, type=Path)
 
+    db_sub.add_parser(
+        "recompute-counts",
+        help="recompute prototype productive_count values from uses edges",
+    )
+
     ext = subparsers.add_parser("extract", help="bulk auto-extraction pipeline")
     ext_sub = ext.add_subparsers(dest="ext_cmd", required=True)
 
@@ -89,6 +107,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--status",
         required=True,
         choices=["unsupported_op", "needs_review", "failed_extraction"],
+    )
+    ext_retry.add_argument(
+        "--chars",
+        nargs="+",
+        help="optional subset of chars to retry from the chosen status bucket",
     )
     ext_retry.add_argument("--iou-gate", type=float, default=0.90)
     style = subparsers.add_parser("style", help="batch stylize glyph records via ComfyUI")
@@ -121,6 +144,7 @@ def _build_artifacts(
     """
     graphics_path, _dictionary_path = fetch_mmh(mmh_dir)
     mmh_chars = load_mmh_graphics(graphics_path)
+    lookup = load_unified_lookup(mmh_dir, _DEFAULT_ANIMCJK_DIR)
     plan = load_extraction_plan(plan_path)
     rules = load_rules(rules_path)
     rules_doc = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
@@ -149,7 +173,16 @@ def _build_artifacts(
             decision_id=f"d:{ch}:composition",
         )
 
-        tree = build_instance_tree(ch, plan)
+        decomposition = lookup.char_decomposition_lookup(ch)
+        tree = build_instance_tree(
+            ch,
+            plan,
+            decomp_source={
+                "char": ch,
+                "adapter": decomposition.source if decomposition is not None else "extraction_plan",
+                **({"confidence": decomposition.confidence} if decomposition is not None else {}),
+            },
+        )
         resolved, constraints = compose_transforms(tree, glyph_bbox=(0, 0, 1024, 1024))
         records[ch] = build_glyph_record(
             ch,
@@ -157,6 +190,7 @@ def _build_artifacts(
             constraints,
             library,
             mmh_char=mmh_chars[ch],
+            decomp_source=decomposition.source if decomposition is not None else "cjk-decomp",
         )
         traces[ch] = [trace_to_dict(decomp_trace), trace_to_dict(compose_trace)]
 
@@ -200,7 +234,9 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
     from olik_font.sink.connection import connect
     from olik_font.sink.schema import ensure_schema
     from olik_font.sink.surrealdb import (
+        compute_productive_counts,
         upsert_glyph,
+        upsert_has_kangxi,
         upsert_prototype,
         upsert_rule_trace,
         upsert_rules,
@@ -225,8 +261,21 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
     upsert_rules(db, _rules_catalog(rule_set))
 
     for ch, rec in records.items():
-        radical = mmh_dict.get(ch).radical if ch in mmh_dict else None
-        upsert_glyph(db, _db_record(ch, rec, radical))
+        radical = mmh_radical(ch, dictionary=mmh_dict)
+        glyph_etymology = mmh_etymology(ch, dictionary=mmh_dict)
+        if radical is not None:
+            kangxi_id = _kangxi_proto_id(radical)
+            upsert_prototype(
+                db,
+                {
+                    "id": kangxi_id,
+                    "name": radical,
+                    "source": "mmh:kangxi",
+                },
+            )
+        upsert_glyph(db, _db_record(ch, rec, radical, glyph_etymology))
+        if radical is not None:
+            upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
         upsert_rule_trace(db, ch, _db_trace(traces[ch]))
 
     db.query(
@@ -241,6 +290,7 @@ def _cmd_db_sync(args: argparse.Namespace) -> int:
             }
         },
     )
+    compute_productive_counts(db)
     return 0 if len(records) == len(args.chars) else 1
 
 
@@ -262,6 +312,20 @@ def _cmd_db_reset(args: argparse.Namespace) -> int:
     db.query(f"DEFINE DATABASE {cfg.database};")
     db.use(cfg.namespace, cfg.database)
     ensure_schema(db)
+    return 0
+
+
+def _cmd_db_recompute_counts(_args: argparse.Namespace) -> int:
+    from olik_font.sink.connection import connect
+    from olik_font.sink.schema import ensure_schema
+    from olik_font.sink.surrealdb import compute_productive_counts
+
+    db = connect()
+    ensure_schema(db)
+    counts = compute_productive_counts(db)
+    print(f"recomputed productive_count for {len(counts)} prototypes")
+    for proto_id, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:10]:
+        print(f"  {proto_id} {count}")
     return 0
 
 
@@ -463,6 +527,9 @@ def _cmd_extract_retry(args: argparse.Namespace) -> int:
         )
     )
     chars = [row["char"] for row in rows]
+    if args.chars:
+        wanted = set(args.chars)
+        chars = [char for char in chars if char in wanted]
     if not chars:
         print(f"no chars with status = {args.status}")
         return 0
@@ -593,12 +660,18 @@ def _rule_resolution(action: dict[str, Any]) -> str:
     return json.dumps(action, ensure_ascii=False, sort_keys=True)
 
 
-def _db_record(char: str, record: dict[str, Any], radical: str | None) -> dict[str, Any]:
+def _db_record(
+    char: str,
+    record: dict[str, Any],
+    radical: str | None,
+    glyph_etymology: str | None,
+) -> dict[str, Any]:
     iou_report = record.get("metadata", {}).get("iou_report", {})
     return {
         "char": char,
         "stroke_count": len(record.get("stroke_instances", [])),
         "radical": radical,
+        "etymology": glyph_etymology,
         "iou_mean": float(iou_report.get("mean", 0.0)),
         "iou_report": iou_report,
         **record,
@@ -640,6 +713,10 @@ def _olik_version() -> str:
         return "unknown"
 
 
+def _kangxi_proto_id(radical: str) -> str:
+    return f"proto:kangxi_{name_to_slug(radical)}"
+
+
 def main() -> int:
     args = _parse_args(sys.argv[1:])
     if args.cmd == "build":
@@ -651,6 +728,8 @@ def main() -> int:
             return _cmd_db_reset(args)
         if args.db_cmd == "export":
             return _cmd_db_export(args)
+        if args.db_cmd == "recompute-counts":
+            return _cmd_db_recompute_counts(args)
     if args.cmd == "extract":
         if args.ext_cmd == "auto":
             return _cmd_extract_auto(args)

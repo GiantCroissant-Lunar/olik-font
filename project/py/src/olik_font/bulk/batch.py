@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import platform
 import sys
 from collections import Counter
@@ -11,12 +10,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from olik_font.bulk import variant_match
 from olik_font.bulk.charlist import load_moe_4808, select_buckets
 from olik_font.bulk.planner import PlanFailed, PlanUnsupported, plan_char
-from olik_font.bulk.reuse import ProtoIndex, VariantCap
+from olik_font.bulk.reuse import ProtoIndex, VariantCap, name_to_slug
 from olik_font.bulk.status import Status
 from olik_font.bulk.variant_caps import load_variant_caps
 from olik_font.compose.walk import compose_transforms
@@ -28,11 +25,19 @@ from olik_font.prototypes.extraction_plan import ExtractionPlan, PrototypePlan
 from olik_font.sink.surrealdb import (
     upsert_glyph,
     upsert_glyph_stub,
+    upsert_has_kangxi,
     upsert_prototype,
     upsert_variant_of_edge,
 )
+from olik_font.sources.cjk_decomp import load_cjk_entries, load_cjk_overrides
 from olik_font.sources.makemeahanzi import (
     MmhChar,
+)
+from olik_font.sources.makemeahanzi import (
+    etymology as mmh_etymology,
+)
+from olik_font.sources.makemeahanzi import (
+    radical as mmh_radical,
 )
 from olik_font.sources.unified import load_unified_lookup
 from olik_font.types import BBox, PrototypeLibrary
@@ -80,82 +85,19 @@ def _record_key(value: object, table: str) -> str:
     return text
 
 
-def _load_cjk_overrides(path: Path = _DEFAULT_CJK_OVERRIDES) -> dict[str, dict[str, Any]]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(raw, dict):
-        raise ValueError(f"failed to read {path}: expected mapping")
-
-    overrides: dict[str, dict[str, Any]] = {}
-    for char, entry in raw.items():
-        if not isinstance(char, str) or not char:
-            raise ValueError(f"cjk override key must be a non-empty string: {char!r}")
-        if not isinstance(entry, dict):
-            raise ValueError(f"cjk override for {char!r} must be a mapping")
-        if "operator" not in entry or "components" not in entry:
-            raise ValueError(f"cjk override for {char!r} must include operator and components")
-
-        operator = entry["operator"]
-        if operator is not None and not isinstance(operator, str):
-            raise ValueError(f"cjk override operator for {char!r} must be a string or null")
-
-        components = entry["components"]
-        if not isinstance(components, list) or any(
-            not isinstance(component, str) or not component for component in components
-        ):
-            raise ValueError(f"cjk override components for {char!r} must be a list[str]")
-
-        overrides[char] = {
-            "operator": operator,
-            "components": list(components),
-        }
-    return overrides
-
-
 def _load_cjk_entries(
     path: Path = _DEFAULT_CJK,
     *,
     overrides_path: Path = _DEFAULT_CJK_OVERRIDES,
 ) -> dict[str, dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    entries = raw.get("entries", {})
-    merged_entries = {
-        char: dict(entry) for char, entry in entries.items() if isinstance(entry, dict)
-    }
-
-    for char, entry in _load_cjk_overrides(overrides_path).items():
-        merged_entries[char] = dict(entry)
+    entries = load_cjk_entries(path, overrides_path=overrides_path)
+    for char, entry in load_cjk_overrides(overrides_path).items():
         print(
             f"cjk-decomp override: {char} -> operator={entry['operator']!r} "
             f"components={entry['components']}",
             file=sys.stderr,
         )
-
-    def build_component_tree(component_char: str, seen: frozenset[str]) -> dict[str, Any]:
-        if component_char in seen:
-            return {"char": component_char, "components": []}
-
-        child_entry = merged_entries.get(component_char)
-        raw_children = child_entry.get("components", []) if isinstance(child_entry, dict) else []
-        if not isinstance(raw_children, list) or not raw_children:
-            return {"char": component_char, "components": []}
-
-        next_seen = seen | {component_char}
-        return {
-            "char": component_char,
-            "operator": child_entry.get("operator"),
-            "components": [build_component_tree(child, next_seen) for child in raw_children],
-        }
-
-    enriched: dict[str, dict[str, Any]] = {}
-    for char, entry in merged_entries.items():
-        components = entry.get("components", []) if isinstance(entry, dict) else []
-        enriched[char] = {
-            **entry,
-            "component_tree": [
-                build_component_tree(comp, frozenset({char})) for comp in components
-            ],
-        }
-    return enriched
+    return entries
 
 
 def _proto_index_from_db(db) -> ProtoIndex:
@@ -276,10 +218,19 @@ def _counting_probe(
     return probe
 
 
-def _db_record(char: str, record: dict[str, Any], iou: float, run_id: str) -> dict[str, Any]:
+def _db_record(
+    char: str,
+    record: dict[str, Any],
+    iou: float,
+    run_id: str,
+    radical: str | None,
+    glyph_etymology: str | None,
+) -> dict[str, Any]:
     return {
         "char": char,
         "stroke_count": len(record.get("stroke_instances", [])),
+        "radical": radical,
+        "etymology": glyph_etymology,
         "iou_mean": iou,
         "iou_report": record.get("metadata", {}).get("iou_report", {}),
         **record,
@@ -339,6 +290,19 @@ def run_batch(
     probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
 
     for ch in buckets:
+        radical = mmh_radical(ch, dictionary=lookup.mmh_dictionary)
+        glyph_etymology = mmh_etymology(ch, dictionary=lookup.mmh_dictionary)
+        if not dry_run and run_id is not None and radical is not None:
+            kangxi_id = _kangxi_proto_id(radical)
+            upsert_prototype(
+                db,
+                {
+                    "id": kangxi_id,
+                    "name": radical,
+                    "source": "mmh:kangxi",
+                },
+            )
+
         entry = cjk.get(ch)
         if entry is None:
             if not dry_run and run_id is not None:
@@ -348,7 +312,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error="cjk-decomp entry missing",
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -367,18 +335,18 @@ def run_batch(
                     "medians": loaded.medians,
                 }
 
-        host_dict = lookup.char_dictionary_lookup(ch)
-        host_matches = host_dict.matches if host_dict is not None else None
+        decomposition = lookup.char_decomposition_lookup(ch)
 
         result = plan_char(
             char=ch,
             cjk_entry=entry,
             mmh=planner_mmh,
-            matches=host_matches,
+            matches=None,
             index=index,
             probe_iou=probe,
             gate=iou_gate,
             cap=cap,
+            decomposition=decomposition,
             cjk_entries=cjk,
             graphics_lookup=lambda component: (
                 mmh.get(component) or lookup.char_graphics_lookup(component)
@@ -394,7 +362,11 @@ def run_batch(
                     Status.UNSUPPORTED_OP.value,
                     missing_op=result.missing_op,
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.UNSUPPORTED_OP)
             continue
 
@@ -406,7 +378,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error=result.reason,
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -420,7 +396,21 @@ def run_batch(
         library = PrototypeLibrary()
         try:
             extract_all_prototypes(synthetic, mmh, library)
-            tree = build_instance_tree(ch, synthetic)
+            tree = build_instance_tree(
+                ch,
+                synthetic,
+                decomp_source={
+                    "char": ch,
+                    "adapter": decomposition.source
+                    if decomposition is not None
+                    else "extraction_plan",
+                    **(
+                        {"confidence": decomposition.confidence}
+                        if decomposition is not None
+                        else {}
+                    ),
+                },
+            )
             resolved, constraints = compose_transforms(tree, glyph_bbox=_GLYPH_BBOX)
             record = build_glyph_record(
                 ch,
@@ -428,6 +418,7 @@ def run_batch(
                 constraints,
                 library,
                 mmh_char=mmh[ch],
+                decomp_source=decomposition.source if decomposition is not None else "cjk-decomp",
             )
         except Exception as exc:
             if not dry_run and run_id is not None:
@@ -437,7 +428,11 @@ def run_batch(
                     Status.FAILED_EXTRACTION.value,
                     extraction_error=f"{type(exc).__name__}: {exc}",
                     extraction_run=run_id,
+                    radical=radical,
+                    etymology=glyph_etymology,
                 )
+                if radical is not None:
+                    upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
             report.add(Status.FAILED_EXTRACTION)
             continue
 
@@ -462,9 +457,11 @@ def run_batch(
             for variant_id, canonical_id in result.variant_edges:
                 upsert_variant_of_edge(db, variant_id, canonical_id)
 
-            db_record = _db_record(ch, record, iou, run_id)
+            db_record = _db_record(ch, record, iou, run_id, radical, glyph_etymology)
             db_record["status"] = status.value
             upsert_glyph(db, db_record)
+            if radical is not None:
+                upsert_has_kangxi(db, ch, _kangxi_proto_id(radical))
 
         index = ProtoIndex(prototypes=[*index.prototypes, *result.new_prototypes])
         probe = _counting_probe(_make_probe(mmh, index), index, iou_gate, report)
@@ -473,3 +470,7 @@ def run_batch(
         _finalize_extraction_run(db, run_id, report)
 
     return report
+
+
+def _kangxi_proto_id(radical: str) -> str:
+    return f"proto:kangxi_{name_to_slug(radical)}"

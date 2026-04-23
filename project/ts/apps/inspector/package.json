@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.5",
     "@olik/flow-nodes": "workspace:*",
     "@olik/glyph-loader": "workspace:*",
     "@olik/glyph-schema": "workspace:*",

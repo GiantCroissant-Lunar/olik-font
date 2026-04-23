@@ -41,7 +41,22 @@ workflow.
 
 | task | commit | metric | value | kimi_verdict | timestamp |
 |---|---|---|---|---|---|
-<!-- rows appended below this line by the workflow -->
+| 0 | b0b7972 | guard_violations | 0 | n/a | 2026-04-23T01:45:31Z |
+| 1 | e52750e | sample_char | 丁 | n/a | 2026-04-23T01:54:45Z |
+| 2 | 56c893c | 4seed_iou_min | 0.9090868680424999 | n/a | 2026-04-23T02:13:58Z |
+| 3 | a7803ca | mode_dispatch_tests_passed | 3/3 | n/a | 2026-04-23T02:26:31Z |
+| 4 | 75f9315 | new_tables_in_schema | 3 | n/a | 2026-04-23T02:34:22Z |
+| 5 | adb9485 | has_kangxi_edges_in_sample | 99 | n/a | 2026-04-23T02:45:49Z |
+| 5 | adb9485 | glyphs_with_etymology_in_sample | 97 | n/a | 2026-04-23T02:45:49Z |
+| 6 | baa2e99 | top10_overlap_with_hanzicraft | 0/10 | n/a | 2026-04-23T02:55:48Z |
+| 7 | f241ba5 | kimi_pass_count_of_4 | 4 | plan-14-kimi-verdicts/task-07-decomp-explorer.md | 2026-04-23T03:18:50Z |
+| 8 | 0d1e245 | authored_file_validates | true | n/a | 2026-04-23T03:33:33Z |
+| 9 | 7f46870 | kimi_verdict | pass | plan-14-kimi-verdicts/task-09-proto-browser.md | 2026-04-23T03:46:55Z |
+| 10 | a8b73bc | pearson_iou_vs_centroid | 0.9594645732086928 | n/a | 2026-04-23T04:06:54Z |
+| 11 | d78281f | demo_char | 丁 | n/a | 2026-04-23T04:21:02Z |
+| 11 | d78281f | status_flip | failed→verified | n/a | 2026-04-23T04:21:02Z |
+| 11 | d78281f | composed_iou | 0.999999191166753 | plan-14-kimi-verdicts/task-11-e2e.md | 2026-04-23T04:21:02Z |
+| 12 | 8d2f785 | verified_count | 3332 | n/a | 2026-04-23T04:36:41Z |
 
 ## Cross-reference
 

@@ -3,7 +3,7 @@ import { useAppState, type ViewKey } from "../state.js";
 
 const VIEWS: Array<{ key: ViewKey; label: string }> = [
   { key: "decomposition", label: "Decomposition Explorer" },
-  { key: "library", label: "Prototype Library" },
+  { key: "prototype", label: "Prototype Browser" },
   { key: "rules", label: "Rule Browser" },
   { key: "placement", label: "Placement Debugger" },
 ];

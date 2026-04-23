@@ -46,6 +46,10 @@ def test_db_sync_writes_glyph(
     assert len(row) == 1
     assert row[0]["char"] == "明"
     assert row[0]["stroke_count"] >= 1
+    productive = _rows(
+        db.query("SELECT count() AS count FROM prototype WHERE productive_count > 0 GROUP ALL;")
+    )
+    assert productive[0]["count"] >= 1
 
 
 def test_db_reset_clears_and_recreates(
